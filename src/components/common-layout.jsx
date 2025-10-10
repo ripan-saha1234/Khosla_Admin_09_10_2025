@@ -67,8 +67,10 @@ function CommonLayout() {
       <div className="common-layout-content">
         <div className="common-layout-header">
           <div className="common-layout-user-info-container">
-            <h1>{user?.name}</h1>
-            <p>{user?.email}</p>
+            {/* <h1>{user?.name}</h1> */}
+            <h1>KHOSLA ONLINE</h1>
+            <p>Admin Panel</p>
+            {/* <p>{user?.email}</p> */}
             {/* <p>{user.role}</p> */}
           </div>
           <div 

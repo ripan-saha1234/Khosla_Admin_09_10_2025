@@ -9,24 +9,29 @@ function Login() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    
+    // Static credentials - will be replaced with API call in future
+    const STATIC_EMAIL = 'arijit.das@webprismits.com';
+    const STATIC_PASSWORD = 'secure@1234';
+    
     // future e API call korar jonno comment korchi
-  // const response = await fetch('YOUR_API_ENDPOINT', {
-  //   method: 'POST',
-  //   body: JSON.stringify({ email, password })
-  // });
-  // const userData = await response.json();
-    // For now, we'll do a simple validation
-    // In the future, this will be replaced with API call
-    if (email && password) {
+    // const response = await fetch('YOUR_API_ENDPOINT', {
+    //   method: 'POST',
+    //   body: JSON.stringify({ email, password })
+    // });
+    // const userData = await response.json();
+    
+    // Validate against static credentials
+    if (email === STATIC_EMAIL && password === STATIC_PASSWORD) {
       // Mock user data - this will come from API in future
       const userData = {
-        name: 'Akash Chowdhury',
+        name: 'Arijit Das',
         email: email,
         role: 'super admin',
       };
       login(userData);
     } else {
-      alert('Please enter both email and password');
+      alert('Invalid email or password. Please try again.');
     }
   };
 

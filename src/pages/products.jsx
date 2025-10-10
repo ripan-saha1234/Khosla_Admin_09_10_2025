@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Search, Plus } from "lucide-react";
+import axios from "axios";
 import {
   Dialog,
   DialogTitle,
@@ -32,54 +33,68 @@ function Products() {
   async function fetchSearchResults(){
     setLoading(true);
     try {
-      // Search by product name or model
-      const res = await fetch(`${API_BASE_URL}/products?limit=50&offset=0`);
-      const data = await res.json();
+      // Search by model using API endpoint
+      const res = await fetch(`${API_BASE_URL}/products/${searchTerm}`);
       
       console.log('=== Search API Response ===');
-      console.log('Complete Search Response:', data);
-      console.log('Search term:', searchTerm);
-      console.log('Total products found:', data.total);
-      console.log('Products count:', data.count);
-      console.log('First search result:', data.products?.[0]);
+      console.log('Search term (model):', searchTerm);
+      console.log('Search URL:', `${API_BASE_URL}/products/${searchTerm}`);
+      
+      if (!res.ok) {
+        if (res.status === 404) {
+          console.log('Product not found');
+          setProducts([]);
+          setLoading(false);
+          return;
+        }
+        throw new Error("Failed to search product");
+      }
+      
+      const data = await res.json();
+      console.log('Search Response:', data);
       console.log('==========================');
       
-      if (data.products) {
-        // Filter products locally by search term
-        const filteredProducts = data.products.filter(product => 
-          product.Name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          product.Model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (product.Brands && product.Brands.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
-
-        // Transform filtered products
-        const transformedProducts = filteredProducts.map(product => ({
-          id: product.PID,
-          name: product.Name,
-          regularPrice: product.Regular_price,
-          salePrice: product.Sale_price,
-          type: product.Type,
-          model: product.Model,
-          shortDesc: product.Short_description,
-          description: product.Description,
-          inStock: product.In_stock,
-          categories: product.Categories ? product.Categories.split(',').map(cat => cat.trim()) : [],
-          brand: product.Brands,
-            images: product.Images ? product.Images.split(',').map(img => {
-              const trimmedImg = img.trim();
-              if (trimmedImg.startsWith('/uploads')) {
-                // Same base URL as above - update both places
-                return `https://www.khoslaonline.com${trimmedImg}`;
-              }
-              return trimmedImg;
-            }) : []
-        }));
-
-        setProducts(transformedProducts);
+      // Check if single product or array of products is returned
+      let productsArray = [];
+      
+      if (Array.isArray(data)) {
+        productsArray = data;
+      } else if (data.product) {
+        productsArray = [data.product];
+      } else if (data.products) {
+        productsArray = data.products;
+      } else {
+        // If single product object is returned directly
+        productsArray = [data];
       }
+      
+      // Transform products
+      const transformedProducts = productsArray.map(product => ({
+        id: product.PID,
+        name: product.Name,
+        regularPrice: product.Regular_price,
+        salePrice: product.Sale_price,
+        type: product.Type,
+        model: product.Model,
+        shortDesc: product.Short_description,
+        description: product.Description,
+        inStock: product.In_stock,
+        categories: product.Categories ? product.Categories.split(',').map(cat => cat.trim()) : [],
+        brand: product.Brands,
+        images: product.Images ? product.Images.split(',').map(img => {
+          const trimmedImg = img.trim();
+          if (trimmedImg.startsWith('/uploads')) {
+            return `https://khoslaslider.s3.ap-south-1.amazonaws.com${trimmedImg}`;
+          }
+          return trimmedImg;
+        }) : []
+      }));
+
+      setProducts(transformedProducts);
     } catch (error) {
       console.error("Error fetching search results:", error);
-      alert('Failed to search products. Please try again.');
+      alert('Failed to search product. Please try again.');
+      setProducts([]);
     }
     setLoading(false);
   };
@@ -213,40 +228,128 @@ function Products() {
     if (editProduct) {
       // Edit mode: update the product in the backend
       try {
-        // const response = await fetch(`/api/products/${editProduct.id}`, {
-        //   method: 'PUT',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify(newProduct)
-        // });
-        // if (!response.ok) {
-        //   throw new Error("Failed to update product");
-        // }
-        // const updatedProduct = await response.json();
-        // Update the product in the local state list
-        setProducts((prev) =>
-          prev.map((prod) =>
-            prod.id === editProduct.id ? { ...prod, ...newProduct } : prod
-          )
-        );
+        // Map form data to API structure
+        const apiBody = {
+          Model: newProduct.model || "",
+          PID: newProduct.id || "",
+          Type: newProduct.type || "simple",
+          Name: newProduct.name || "",
+          GTIN: "",
+          Keyword: newProduct.categories?.join(", ") || "",
+          Published: "1",
+          Is_featured: "0",
+          Visibility_in_catalog: "visible",
+          Short_description: newProduct.shortDesc || "",
+          Description: newProduct.description || "",
+          Tax_status: "taxable",
+          Tax_class: "standard",
+          In_stock: newProduct.inStock || "1",
+          Stock: "100",
+          Low_stock_amount: "10",
+          Backorders_allowed: "0",
+          Sold_individually: "0",
+          Weight: "",
+          Length: "",
+          Width: "",
+          Height: "",
+          Allow_customer_reviews: "1",
+          Sale_price: newProduct.salePrice || "0",
+          Regular_price: newProduct.regularPrice || "0",
+          Categories: newProduct.categories?.join(", ") || "",
+          Tags: "",
+          Shipping_class: "standard",
+          Images: newProduct.images?.join(", ") || "",
+          Brands: newProduct.brand || "",
+          Attribute_1_name: "",
+          Attribute_1_value: "",
+          Attribute_1_visible: "1",
+          Attribute_1_global: "0"
+        };
+
+        // Use model in the URL path
+        const productModel = editProduct.model || newProduct.model;
+        const response = await fetch(`${API_BASE_URL}/products/${productModel}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(apiBody)
+        });
+        
+        if (!response.ok) {
+          throw new Error("Failed to update product");
+        }
+        
+        const updatedProduct = await response.json();
+        console.log("Product updated:", updatedProduct);
+        
+        alert("Product updated successfully!");
+        
+        // Refresh the product list from API to show updated data
+        fetchProducts(currentPage);
       } catch (error) {
         console.error("Error updating product:", error);
+        alert("Failed to update product. Please try again.");
       }
     } else {
       // Add mode: create a new product in the backend
       try {
-        // const response = await fetch('/api/products', {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify(newProduct)
-        // });
-        // if (!response.ok) {
-        //   throw new Error("Failed to create product");
-        // }
-        // const createdProduct = await response.json();
-        // Add the newly created product to the local state list
-        setProducts((prev) => [...prev, newProduct]);
+        // Map form data to API structure
+        const apiBody = {
+          Model: newProduct.model || "",
+          PID: newProduct.id || "",
+          Type: newProduct.type || "simple",
+          Name: newProduct.name || "",
+          GTIN: "",
+          Keyword: newProduct.categories?.join(", ") || "",
+          Published: "1",
+          Is_featured: "0",
+          Visibility_in_catalog: "visible",
+          Short_description: newProduct.shortDesc || "",
+          Description: newProduct.description || "",
+          Tax_status: "taxable",
+          Tax_class: "standard",
+          In_stock: newProduct.inStock || "1",
+          Stock: "100",
+          Low_stock_amount: "10",
+          Backorders_allowed: "0",
+          Sold_individually: "0",
+          Weight: "",
+          Length: "",
+          Width: "",
+          Height: "",
+          Allow_customer_reviews: "1",
+          Sale_price: newProduct.salePrice || "0",
+          Regular_price: newProduct.regularPrice || "0",
+          Categories: newProduct.categories?.join(", ") || "",
+          Tags: "",
+          Shipping_class: "standard",
+          Images: newProduct.images?.join(", ") || "",
+          Brands: newProduct.brand || "",
+          Attribute_1_name: "",
+          Attribute_1_value: "",
+          Attribute_1_visible: "1",
+          Attribute_1_global: "0"
+        };
+
+        const response = await fetch(`${API_BASE_URL}/products`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(apiBody)
+        });
+        
+        if (!response.ok) {
+          throw new Error("Failed to create product");
+        }
+        
+        const createdProduct = await response.json();
+        console.log("Product created:", createdProduct);
+        
+        alert("Product added successfully!");
+        
+        // Refresh the product list from API
+        fetchProducts(currentPage);
       } catch (error) {
         console.error("Error creating product:", error);
+        alert("Failed to add product. Please try again.");
       }
     }
     // Close the dialog and reset the edit state
@@ -262,8 +365,35 @@ function Products() {
     setOpenBulkProductDialog(false);
   };
 
-  function handleDeleteProduct(product){
-    setProducts((prev) => prev.filter((prod) => prod.name !== product.name));
+  async function handleDeleteProduct(product){
+    // Confirm before deleting
+    const confirmDelete = window.confirm(`Are you sure you want to delete "${product.name}"?`);
+    if (!confirmDelete) {
+      return;
+    }
+
+    try {
+      // Use model in the URL path for DELETE request
+      const productModel = product.model;
+      const response = await fetch(`${API_BASE_URL}/products/${productModel}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to delete product");
+      }
+      
+      console.log("Product deleted:", product.name);
+      
+      alert("Product deleted successfully!");
+      
+      // Refresh the product list from API
+      fetchProducts(currentPage);
+    } catch (error) {
+      console.error("Error deleting product:", error);
+      alert("Failed to delete product. Please try again.");
+    }
   };
 
 
@@ -276,7 +406,7 @@ function Products() {
             <div className="products-page-product-search">
               <input 
                 type="text" 
-                placeholder="Search by name, model, or brand" 
+                placeholder="Search by model" 
                 value={searchTerm} 
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -327,9 +457,9 @@ function Products() {
                     ) : (
                       <p>Price: ₹{parseFloat(product?.regularPrice).toFixed(2)}</p>
                     )}
-                    <p style={{fontSize: '0.9rem', color: '#666'}}>
+                    {/* <p style={{fontSize: '0.9rem', color: '#666'}}>
                       {product?.inStock === "1" ? '✓ In Stock' : '✗ Out of Stock'}
-                    </p>
+                    </p> */}
                   </div>
                   <div className="products-page-product-button-container">
                     <button onClick={() => handleEditProduct(product)}>EDIT</button>
@@ -485,8 +615,79 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit }) {
   const [uploadedImages, setUploadedImages] = useState([null, null, null, null, null, null]);
   const [imagePreviewUrls, setImagePreviewUrls] = useState(["", "", "", "", "", ""]);
   const [isImagesSubmitted, setIsImagesSubmitted] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [apiReturnedImageUrls, setApiReturnedImageUrls] = useState([]); // URLs returned from API
   const fileInputRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
+  
+  const baseUrl = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev";
+
+  // ======== HANDLE UPLOAD FILE LOGIC (Presigned URL) ========
+  const uploadFileToS3 = async (file) => {
+    try {
+      console.log("Starting upload for file:", file.name);
+      
+      const fileExtension = file.name.split(".").pop();
+      console.log("File extension:", fileExtension);
+      
+      // Get pre-signed URL from your API
+      const presignRes = await axios.post(`${baseUrl}/upload-url`, {
+        tableType: 'products',
+        fileExtension,
+        contentType: 'image/jpg',
+        fileName: file.name
+      });
+
+      console.log("Pre-signed URL response:", presignRes.data);
+      
+      if (!presignRes.data || !presignRes.data.data) {
+        throw new Error("Invalid response from upload-url API");
+      }
+
+      const { uploadUrl, fileUrl } = presignRes.data.data;
+      console.log("Upload URL:", uploadUrl);
+      console.log("File URL:", fileUrl);
+
+      // Upload file to S3 using pre-signed URL
+      console.log("Uploading file to S3...");
+      
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': 'image/jpg'
+        }
+      });
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        console.error("S3 upload failed:", uploadResponse.status, errorText);
+        throw new Error(`S3 upload failed: ${uploadResponse.status} ${errorText}`);
+      }
+
+      console.log("S3 upload successful:", uploadResponse.status);
+      
+      return fileUrl;
+      
+    } catch (err) {
+      console.error("Error uploading file:", err);
+      
+      if (err.response) {
+        console.error("Response status:", err.response.status);
+        console.error("Response data:", err.response.data);
+        console.error("Response headers:", err.response.headers);
+      }
+      
+      if (err.response?.status === 403) {
+        throw new Error("Access denied. Please check your permissions or try again.");
+      } else if (err.response?.status === 400) {
+        throw new Error("Invalid file or request. Please check your file format.");
+      } else if (err.code === 'ECONNABORTED') {
+        throw new Error("Upload timeout. Please try again with a smaller file.");
+      } else {
+        throw new Error(`Upload failed: ${err.message}`);
+      }
+    }
+  };
 
   // Update form fields if the "product" prop changes
   useEffect(() => {
@@ -555,84 +756,54 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit }) {
   // Submit images
   const handleSubmitImages = async () => {
     try {
-      // Create FormData object
-      const formData = new FormData();
+      setUploading(true);
       
-      // Append all uploaded images to FormData
-      uploadedImages.forEach((image, index) => {
-        if (image) {
-          if (image.isExisting) {
-            // For existing images, append the URL
-            formData.append(`existingImage${index}`, image.url);
-          } else {
-            // For new uploads, append the file
-            formData.append(`image${index}`, image);
-          }
+      // Filter out null images and separate existing vs new uploads
+      const imagesToUpload = uploadedImages.filter(img => img !== null);
+      
+      if (imagesToUpload.length === 0) {
+        alert("Please select at least one image before uploading!");
+        setUploading(false);
+        return;
+      }
+
+      const uploadedUrls = [];
+      
+      for (const image of imagesToUpload) {
+        if (image.isExisting) {
+          // If it's an existing image, just use the URL
+          uploadedUrls.push(image.url);
+          console.log("Using existing image:", image.url);
+        } else {
+          // Upload new image to S3
+          console.log("Uploading new image:", image.name);
+          const fileUrl = await uploadFileToS3(image);
+          uploadedUrls.push(fileUrl);
+          console.log("Image uploaded successfully:", fileUrl);
         }
-      });
-      
-      // ====== UNCOMMENT THIS WHEN YOUR API IS READY ======
-      // const response = await fetch('YOUR_API_ENDPOINT_HERE/upload-images', {
-      //   method: 'POST',
-      //   body: formData  // FormData is passed here in body
-      // });
-      // 
-      // const data = await response.json();
-      // 
-      // // API should return:
-      // // {
-      // //   success: true,
-      // //   imageUrls: ["url1", "url2", "url3", ...]
-      // // }
-      // 
-      // setApiReturnedImageUrls(data.imageUrls);
-      // setIsImagesSubmitted(true);
-      // ====================================================
-      
-      
-      // ====== MOCK DEMO (Remove this when API is ready) ======
-      console.log('FormData contents:');
-      for (let pair of formData.entries()) {
-        console.log(pair[0], pair[1]);
       }
       
-      // Simulating API response - combine existing and new images
-      const mockApiResponse = uploadedImages
-        .filter(img => img !== null)
-        .map((img, idx) => {
-          if (img.isExisting) {
-            return img.url; // Return existing URL
-          } else {
-            // For new uploads, use the same base URL as existing images
-            return `https://www.khoslaonline.com/uploads/${img.name}`;
-          }
-        });
-      
-      setApiReturnedImageUrls(mockApiResponse);
+      setApiReturnedImageUrls(uploadedUrls);
       setIsImagesSubmitted(true);
-      // ========================================================
+      alert(`Product images uploaded successfully!`);
+      
+      console.log("All uploaded image URLs:", uploadedUrls);
       
     } catch (error) {
       console.error('Error uploading images:', error);
-      alert('Failed to upload images. Please try again.');
+      const errorMessage = error.message || "Failed to upload images. Please try again.";
+      alert(`Upload Error: ${errorMessage}`);
+    } finally {
+      setUploading(false);
     }
   };
 
   const handleSubmit = () => {
-    // In future, this will upload images to API using FormData
-    // const formData = new FormData();
-    // formData.append('id', id);
-    // formData.append('name', name);
-    // ... append other fields
-    // uploadedImages.forEach((image, index) => {
-    //   if (image) {
-    //     formData.append(`image${index}`, image);
-    //   }
-    // });
-    // const response = await fetch('/api/products', {
-    //   method: 'POST',
-    //   body: formData
-    // });
+    // Check if images were uploaded but not submitted yet
+    if (showImageUpload && uploadedImages.some(img => img !== null) && !isImagesSubmitted) {
+      alert("Please submit the images before saving the product!");
+      return;
+    }
     
     const newProduct = {
       id,
@@ -646,10 +817,9 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit }) {
       regularPrice,
       categories: categories?.split(",").map((cat) => cat?.trim()).filter(Boolean),
       brand,
-      images: showImageUpload 
-        ? imagePreviewUrls.filter(url => url !== "")  // Use uploaded images
-        : images?.split(",").map((img) => img?.trim()).filter(Boolean), // Use URL images
-      uploadedFiles: uploadedImages.filter(img => img !== null) // Store files for future API call
+      images: showImageUpload && apiReturnedImageUrls.length > 0
+        ? apiReturnedImageUrls  // Use S3 uploaded URLs from API
+        : images?.split(",").map((img) => img?.trim()).filter(Boolean), // Use existing URL images
     };
     onSubmit(newProduct);
   };
@@ -660,6 +830,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit }) {
     setUploadedImages([null, null, null, null, null, null]);
     setImagePreviewUrls(["", "", "", "", "", ""]);
     setIsImagesSubmitted(false);
+    setUploading(false);
     setApiReturnedImageUrls([]);
     onClose();
   }
@@ -790,6 +961,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit }) {
                 setImagePreviewUrls(["", "", "", "", "", ""]);
                 setUploadedImages([null, null, null, null, null, null]);
                 setIsImagesSubmitted(false);
+                setUploading(false);
                 setApiReturnedImageUrls([]);
               }
             }}
@@ -873,7 +1045,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit }) {
                 <Button
                   variant="contained"
                   onClick={handleSubmitImages}
-                  disabled={!uploadedImages.some(img => img !== null) || isImagesSubmitted}
+                  disabled={uploading || !uploadedImages.some(img => img !== null) || isImagesSubmitted}
                   sx={{
                     backgroundColor: '#ED1B24',
                     color: 'white',
@@ -889,7 +1061,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit }) {
                     }
                   }}
                 >
-                  {isImagesSubmitted ? '✓ Images Submitted' : 'Submit Images'}
+                  {uploading ? 'Uploading...' : (isImagesSubmitted ? '✓ Images Submitted' : 'Submit Images')}
                 </Button>
                 
                 {isImagesSubmitted && (
