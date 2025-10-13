@@ -515,6 +515,10 @@ function Banners() {
   const [imagePreviewUrls, setImagePreviewUrls] = useState(["", "", "", "", "", ""]);
   const [isImagesSubmitted, setIsImagesSubmitted] = useState(false);
   const [uploading, setUploading] = useState(false);
+  
+  // Field and value for each upload slot
+  const [uploadFields, setUploadFields] = useState(["", "", "", "", "", ""]);
+  const [uploadValues, setUploadValues] = useState(["", "", "", "", "", ""]);
 
   const fileInputRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
   
@@ -522,21 +526,23 @@ function Banners() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editBannerImage, setEditBannerImage] = useState(null);
   const [editBannerPreview, setEditBannerPreview] = useState("");
+  const [editBannerField, setEditBannerField] = useState("");
+  const [editBannerValue, setEditBannerValue] = useState("");
   const editFileInputRef = useRef(null);
   const uploadSectionRef = useRef(null);
 
   const baseUrl = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev"; // 🔹 Replace with your actual API base URL
 
   // ======== SAVE BANNER TO DATABASE ========
-  const saveBannerToDatabase = async (fileUrl, tableType) => {
+  const saveBannerToDatabase = async (fileUrl, tableType, field = "homepage", value = "banner1") => {
     try {
-      console.log("Saving banner to database:", fileUrl, tableType);
+      console.log("Saving banner to database:", fileUrl, tableType, field, value);
       
       const response = await axios.post(`${baseUrl}/slider?tableType=${tableType}`, {
         tableType: tableType,
         largeImageURL: fileUrl,
-        field: "homepage",
-        value: "banner1"
+        field: field || "homepage",
+        value: value || "banner1"
       });
       
       console.log("Banner saved to database:", response.data);
@@ -549,15 +555,15 @@ function Banners() {
   };
 
   // ======== UPDATE BANNER IN DATABASE ========
-  const updateBannerInDatabase = async (fileUrl, tableType, sliderId) => {
+  const updateBannerInDatabase = async (fileUrl, tableType, sliderId, field = "homepage", value = "banner1") => {
     try {
       console.log("Updating banner in database:", fileUrl, tableType, sliderId);
       
       const response = await axios.put(`${baseUrl}/slider/${sliderId}?tableType=${tableType}`, {
         tableType: tableType,
         largeImageURL: fileUrl,
-        field: "homepage",
-        value: "banner1"
+        field: field,
+        value: value
       });
       
       console.log("Banner updated in database:", response.data);
@@ -602,7 +608,7 @@ function Banners() {
   };
 
   // ======== HANDLE UPLOAD FILE LOGIC (Presigned URL) ========
-  const uploadFileToS3 = async (file, tableType, skipDatabaseSave = false) => {
+  const uploadFileToS3 = async (file, tableType, skipDatabaseSave = false, field = "homepage", value = "banner1") => {
     try {
       console.log("Starting upload for file:", file.name, "Type:", tableType);
       
@@ -656,7 +662,7 @@ function Banners() {
       
       // Step 3: Save banner info to database (skip if updating existing banner)
       if (!skipDatabaseSave) {
-        const savedBanner = await saveBannerToDatabase(fileUrl, tableType);
+        const savedBanner = await saveBannerToDatabase(fileUrl, tableType, field, value);
         return { fileUrl, sliderId: savedBanner.sliderId || savedBanner.id };
       }
       
@@ -727,13 +733,18 @@ function Banners() {
       }
 
       const uploadedBanners = [];
-      for (const file of validFiles) {
-        const result = await uploadFileToS3(file, activeTab);
-        uploadedBanners.push({
-          id: Date.now() + Math.random(), // Generate unique ID
-          url: result.fileUrl,
-          sliderId: result.sliderId
-        });
+      for (let i = 0; i < uploadedImages.length; i++) {
+        const file = uploadedImages[i];
+        if (file !== null) {
+          const field = uploadFields[i] || "homepage";
+          const value = uploadValues[i] || "banner1";
+          const result = await uploadFileToS3(file, activeTab, false, field, value);
+          uploadedBanners.push({
+            id: Date.now() + Math.random(), // Generate unique ID
+            url: result.fileUrl,
+            sliderId: result.sliderId
+          });
+        }
       }
 
       // Banners are now saved to database via API - refresh from API
@@ -752,6 +763,8 @@ function Banners() {
         setShowImageUpload(false);
         setUploadedImages([null, null, null, null, null, null]);
         setImagePreviewUrls(["", "", "", "", "", ""]);
+        setUploadFields(["", "", "", "", "", ""]);
+        setUploadValues(["", "", "", "", "", ""]);
         setIsImagesSubmitted(false);
       }, 2000);
     } catch (error) {
@@ -801,6 +814,8 @@ function Banners() {
     const currentBanner = activeTab === "desktop" ? desktopBanners[index] : mobileBanners[index];
     const imageUrl = currentBanner.largeImageURL || currentBanner.url || currentBanner;
     setEditBannerPreview(imageUrl);
+    setEditBannerField(currentBanner.field || "");
+    setEditBannerValue(currentBanner.value || "");
     setShowEditDialog(true);
   };
 
@@ -817,18 +832,32 @@ function Banners() {
   };
 
   const handleSaveEditedBanner = async () => {
-    if (!editBannerImage || editingBannerIndex === null) return;
+    if (editingBannerIndex === null) return;
+    
     try {
       const currentBanner = activeTab === "desktop" ? desktopBanners[editingBannerIndex] : mobileBanners[editingBannerIndex];
-      
-      // Upload new image to S3 (skip database save since we're updating, not creating)
-      const uploadResult = await uploadFileToS3(editBannerImage, activeTab, true);
-      
-      // Update banner in database using the banner ID
       const bannerId = currentBanner.id || currentBanner.sliderId;
-      if (bannerId) {
-        await updateBannerInDatabase(uploadResult.fileUrl, activeTab, bannerId);
+      
+      if (!bannerId) {
+        alert("Banner ID not found. Cannot update.");
+        return;
       }
+      
+      // Determine the image URL to use
+      let imageUrl = currentBanner.largeImageURL || currentBanner.url;
+      
+      // If a new image was selected, upload it to S3
+      if (editBannerImage) {
+        const uploadResult = await uploadFileToS3(editBannerImage, activeTab, true);
+        imageUrl = uploadResult.fileUrl;
+      }
+      
+      // Get field and value (use updated values or keep existing ones)
+      const field = editBannerField || currentBanner.field || "homepage";
+      const value = editBannerValue || currentBanner.value || "banner1";
+      
+      // Update banner in database with new or existing image URL and updated field/value
+      await updateBannerInDatabase(imageUrl, activeTab, bannerId, field, value);
 
       // Banner updated in database via API - refresh from API
       alert("Banner updated successfully!");
@@ -836,6 +865,8 @@ function Banners() {
       setEditingBannerIndex(null);
       setEditBannerImage(null);
       setEditBannerPreview("");
+      setEditBannerField("");
+      setEditBannerValue("");
       
       // Refresh banners from API
       const banners = await fetchBannersFromDatabase(activeTab);
@@ -881,6 +912,8 @@ function Banners() {
     setActiveTab(tab);
     setUploadedImages([null, null, null, null, null, null]);
     setImagePreviewUrls(["", "", "", "", "", ""]);
+    setUploadFields(["", "", "", "", "", ""]);
+    setUploadValues(["", "", "", "", "", ""]);
     setIsImagesSubmitted(false);
   };
 
@@ -1014,6 +1047,58 @@ function Banners() {
                   >
                     Browse Image
                   </Button>
+
+                  {/* Field Dropdown */}
+                  <div style={{ marginTop: "10px" }}>
+                    <label style={{ display: "block", marginBottom: "5px", fontSize: "12px", fontWeight: "500" }}>
+                      Field:
+                    </label>
+                    <select
+                      value={uploadFields[index]}
+                      onChange={(e) => {
+                        const newFields = [...uploadFields];
+                        newFields[index] = e.target.value;
+                        setUploadFields(newFields);
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "8px",
+                        border: "1px solid #ddd",
+                        borderRadius: "4px",
+                        fontSize: "14px"
+                      }}
+                    >
+                      <option value="">Select Field</option>
+                      <option value="category">Category</option>
+                      <option value="brands">Brands</option>
+                      <option value="null">Null</option>
+                    </select>
+                  </div>
+
+                  {/* Value Input */}
+                  <div style={{ marginTop: "10px" }}>
+                    <label style={{ display: "block", marginBottom: "5px", fontSize: "12px", fontWeight: "500" }}>
+                      Value:
+                    </label>
+                    <input
+                      type="text"
+                      value={uploadValues[index]}
+                      onChange={(e) => {
+                        const newValues = [...uploadValues];
+                        newValues[index] = e.target.value;
+                        setUploadValues(newValues);
+                      }}
+                      placeholder="Enter value"
+                      style={{
+                        width: "100%",
+                        padding: "8px",
+                        border: "1px solid #ddd",
+                        borderRadius: "4px",
+                        fontSize: "14px",
+                        boxSizing: "border-box"
+                      }}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
@@ -1083,6 +1168,50 @@ function Banners() {
             >
               Browse New Image
             </Button>
+
+            {/* Field Dropdown */}
+            <div style={{ marginTop: "20px", textAlign: "left" }}>
+              <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: "500" }}>
+                Field:
+              </label>
+              <select
+                value={editBannerField}
+                onChange={(e) => setEditBannerField(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  fontSize: "14px"
+                }}
+              >
+                <option value="">Select Field</option>
+                <option value="category">Category</option>
+                <option value="brands">Brands</option>
+                <option value="null">Null</option>
+              </select>
+            </div>
+
+            {/* Value Input */}
+            <div style={{ marginTop: "15px", textAlign: "left" }}>
+              <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: "500" }}>
+                Value:
+              </label>
+              <input
+                type="text"
+                value={editBannerValue}
+                onChange={(e) => setEditBannerValue(e.target.value)}
+                placeholder="Enter value"
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  boxSizing: "border-box"
+                }}
+              />
+            </div>
           </div>
         </DialogContent>
         <DialogActions>
