@@ -602,7 +602,7 @@ function Banners() {
   };
 
   // ======== HANDLE UPLOAD FILE LOGIC (Presigned URL) ========
-  const uploadFileToS3 = async (file, tableType) => {
+  const uploadFileToS3 = async (file, tableType, skipDatabaseSave = false) => {
     try {
       console.log("Starting upload for file:", file.name, "Type:", tableType);
       
@@ -654,10 +654,14 @@ function Banners() {
 
       console.log("S3 upload successful:", uploadResponse.status);
       
-      // Step 3: Save banner info to database
-      const savedBanner = await saveBannerToDatabase(fileUrl, tableType);
+      // Step 3: Save banner info to database (skip if updating existing banner)
+      if (!skipDatabaseSave) {
+        const savedBanner = await saveBannerToDatabase(fileUrl, tableType);
+        return { fileUrl, sliderId: savedBanner.sliderId || savedBanner.id };
+      }
       
-      return { fileUrl, sliderId: savedBanner.sliderId || savedBanner.id };
+      // For updates, just return the fileUrl
+      return { fileUrl };
       
     } catch (err) {
       console.error("Error uploading file:", err);
@@ -817,8 +821,8 @@ function Banners() {
     try {
       const currentBanner = activeTab === "desktop" ? desktopBanners[editingBannerIndex] : mobileBanners[editingBannerIndex];
       
-      // Upload new image to S3
-      const uploadResult = await uploadFileToS3(editBannerImage, activeTab);
+      // Upload new image to S3 (skip database save since we're updating, not creating)
+      const uploadResult = await uploadFileToS3(editBannerImage, activeTab, true);
       
       // Update banner in database using the banner ID
       const bannerId = currentBanner.id || currentBanner.sliderId;
