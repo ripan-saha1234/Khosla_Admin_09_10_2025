@@ -10,6 +10,10 @@ import UserManagement from './pages/user-management'
 import Login from './pages/login'
 import { useContext } from 'react'
 import { Context } from './context/context'
+import StoreLocator from './pages/StoreLocator'
+import ExtraBannerManagement from './pages/ExtraBannerManagement'
+import YoutubeVideo from './pages/YoutubeVideo'
+import OfferManagement from './pages/OfferManagement'
 
 function App() {
   const { isAuthenticated } = useContext(Context);
@@ -30,6 +34,10 @@ function App() {
           <Route path="coupons" element={<Coupons />} />
           <Route path='banners' element={<Banners/>} />
           <Route path='user-management' element={<UserManagement />} />
+          <Route path='store-locator' element={<StoreLocator />} />
+          <Route path='extra-banner-management' element={<ExtraBannerManagement />} />
+          <Route path='youtube-video' element={<YoutubeVideo />} />
+          <Route path='offer-management' element={<OfferManagement />} />
         </Route>
         
         <Route path="*" element={<Navigate to={isAuthenticated ? "/admin-panel/dashboard" : "/login"} />} />

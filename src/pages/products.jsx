@@ -9,6 +9,7 @@ import {
   Button,
   TextField,
   CircularProgress,
+  Checkbox,
 } from "@mui/material";
 import "../css/products.css";
 
@@ -28,6 +29,26 @@ function Products() {
   const [itemsPerPage] = useState(20); // You can change this
   const [totalPages, setTotalPages] = useState(0);
   const API_BASE_URL = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev";
+
+  // Category dropdown state
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [categories] = useState([
+    { value: "all", label: "All Categories" },
+    { value: "electronics", label: "Electronics" },
+    { value: "clothing", label: "Clothing" },
+    { value: "home", label: "Home & Living" },
+    { value: "sports", label: "Sports & Outdoors" },
+    { value: "books", label: "Books" },
+    { value: "toys", label: "Toys & Games" },
+    { value: "beauty", label: "Beauty & Personal Care" },
+    { value: "automotive", label: "Automotive" },
+  ]);
+
+  // Featured products state (desktop and mobile)
+  const [featuredProducts, setFeaturedProducts] = useState({
+    desktop: new Set(),
+    mobile: new Set()
+  });
 
 
   async function fetchSearchResults(){
@@ -192,6 +213,44 @@ function Products() {
     if (currentPage < totalPages) {
       handlePageChange(currentPage + 1);
     }
+  };
+
+  // Handle featured product checkbox changes
+  const handleFeaturedDesktopChange = (productId) => {
+    setFeaturedProducts(prev => {
+      const newDesktop = new Set(prev.desktop);
+      if (newDesktop.has(productId)) {
+        newDesktop.delete(productId);
+      } else {
+        newDesktop.add(productId);
+      }
+      return {
+        ...prev,
+        desktop: newDesktop
+      };
+    });
+  };
+
+  const handleFeaturedMobileChange = (productId) => {
+    setFeaturedProducts(prev => {
+      const newMobile = new Set(prev.mobile);
+      if (newMobile.has(productId)) {
+        newMobile.delete(productId);
+      } else {
+        newMobile.add(productId);
+      }
+      return {
+        ...prev,
+        mobile: newMobile
+      };
+    });
+  };
+
+  // Handle category filter
+  const handleCategoryChange = (e) => {
+    setSelectedCategory(e.target.value);
+    // You can add filtering logic here if needed
+    // For now, it's just a dropdown with demo data
   };
 
   useEffect(() => {
@@ -403,6 +462,27 @@ function Products() {
         <div className="products-page-product-container-header">
           <h1>PRODUCTS ({totalProducts})</h1>
           <div className="products-page-product-search-add-container">
+            {/* Category Dropdown */}
+            <select
+              value={selectedCategory}
+              onChange={handleCategoryChange}
+              style={{
+                padding: "8px 15px",
+                fontSize: "14px",
+                border: "1px solid #000",
+                borderRadius: "6px",
+                backgroundColor: "white",
+                cursor: "pointer",
+                marginRight: "10px",
+                minWidth: "180px"
+              }}
+            >
+              {categories.map(category => (
+                <option key={category.value} value={category.value}>
+                  {category.label}
+                </option>
+              ))}
+            </select>
             <div className="products-page-product-search">
               <input 
                 type="text" 
@@ -460,6 +540,65 @@ function Products() {
                     {/* <p style={{fontSize: '0.9rem', color: '#666'}}>
                       {product?.inStock === "1" ? '✓ In Stock' : '✗ Out of Stock'}
                     </p> */}
+                  </div>
+                  {/* Featured Checkboxes */}
+                  <div style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                    marginRight: "20px",
+                    minWidth: "200px"
+                  }}>
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px"
+                    }}>
+                      <Checkbox
+                        checked={featuredProducts.desktop.has(product?.id)}
+                        onChange={() => handleFeaturedDesktopChange(product?.id)}
+                        sx={{
+                          color: "#ED1B24",
+                          '&.Mui-checked': {
+                            color: "#ED1B24",
+                          },
+                          padding: "4px"
+                        }}
+                      />
+                      <label style={{
+                        fontSize: "13px",
+                        fontWeight: "500",
+                        cursor: "pointer",
+                        userSelect: "none"
+                      }}>
+                        is_featured_home(desktop)
+                      </label>
+                    </div>
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px"
+                    }}>
+                      <Checkbox
+                        checked={featuredProducts.mobile.has(product?.id)}
+                        onChange={() => handleFeaturedMobileChange(product?.id)}
+                        sx={{
+                          color: "#ED1B24",
+                          '&.Mui-checked': {
+                            color: "#ED1B24",
+                          },
+                          padding: "4px"
+                        }}
+                      />
+                      <label style={{
+                        fontSize: "13px",
+                        fontWeight: "500",
+                        cursor: "pointer",
+                        userSelect: "none"
+                      }}>
+                        is_featured_home(mobile)
+                      </label>
+                    </div>
                   </div>
                   <div className="products-page-product-button-container">
                     <button onClick={() => handleEditProduct(product)}>EDIT</button>

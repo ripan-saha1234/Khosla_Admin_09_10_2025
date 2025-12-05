@@ -58,6 +58,22 @@ function CommonLayout() {
             setLinkSelected("banners");
             navigate("/admin-panel/banners");
           }}>Banner Management</button>
+          <button className={linkSelected === "store-locator"?"selected":""} onClick={()=>{
+            setLinkSelected("store-locator");
+            navigate("/admin-panel/store-locator");
+          }}>Store Locator</button>
+          <button className={linkSelected === "extra-banner-management"?"selected":""} onClick={()=>{
+            setLinkSelected("extra-banner-management");
+            navigate("/admin-panel/extra-banner-management");
+          }}>Extra Banner </button>
+          <button className={linkSelected === "youtube-video"?"selected":""} onClick={()=>{
+            setLinkSelected("youtube-video");
+            navigate("/admin-panel/youtube-video");
+          }}>Youtube Video</button>
+          <button className={linkSelected === "offer-management"?"selected":""} onClick={()=>{
+            setLinkSelected("offer-management");
+            navigate("/admin-panel/offer-management");
+          }}>Offer Management</button>
           {/* <button className={linkSelected === "user-management"?"selected":""} onClick={()=>{
             setLinkSelected("user-management");
             navigate("/admin-panel/user-management");
