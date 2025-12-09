@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import "../css/banner.css";
 import axios from "axios";
-import { Button } from "@mui/material";
+import { Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField } from "@mui/material";
 
 function ExtraBannerManagement() {
   const [banners, setBanners] = useState([null, null, null, null, null, null, null]); // 7 slots
@@ -9,28 +9,45 @@ function ExtraBannerManagement() {
   const [editBannerImage, setEditBannerImage] = useState(null);
   const [editBannerPreview, setEditBannerPreview] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingBanner, setEditingBanner] = useState(null);
+  const [editFormData, setEditFormData] = useState({ description: "", redirecturl: "", text: "" });
+  const [updating, setUpdating] = useState(false);
+  const [deleting, setDeleting] = useState(null);
   const fileInputRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
 
-//   const baseUrl = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev";
-  const tableType = "extrabanners"; // Change this to match your API tableType
+  const baseUrl = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev";
+  const tableType = "extrabanners"; 
 
-  // ======== FETCH BANNERS FROM DATABASE ========
+  // FETCH BANNERS FROM DATABASE 
   const fetchBannersFromDatabase = async () => {
     try {
-      console.log("Fetching extra banners from database:", tableType);
+      console.log("Fetching extra banners from database");
       
-      const response = await axios.get(`${baseUrl}/slider?tableType=${tableType}`);
+      // Try new /banners endpoint first, fallback to old endpoint if needed
+      let response;
+      try {
+        response = await axios.get(`${baseUrl}/banners`);
+        console.log("Fetched from /banners endpoint:", response.data);
+      } catch (err) {
+        console.log("New endpoint failed, trying old endpoint:", err);
+        response = await axios.get(`${baseUrl}/slider?tableType=${tableType}`);
+        console.log("Fetched from old endpoint:", response.data);
+      }
       
-      console.log("Extra banners fetched from database:", response.data);
       const bannersData = response.data.data || response.data || [];
       
-      // Initialize banners array with 7 slots
+      // Initialize banners array with 7 slots, sorted by position
       const bannersArray = [null, null, null, null, null, null, null];
       
-      // Fill in existing banners
-      bannersData.forEach((banner, index) => {
-        if (index < 7) {
-          bannersArray[index] = banner;
+      // Fill in existing banners by position
+      bannersData.forEach((banner) => {
+        // New API uses position (1-7), old API uses index
+        const position = banner.position || banner.index || 0;
+        const arrayIndex = position - 1; // Convert position (1-7) to array index (0-6)
+        
+        if (arrayIndex >= 0 && arrayIndex < 7) {
+          bannersArray[arrayIndex] = banner;
         }
       });
       
@@ -43,45 +60,62 @@ function ExtraBannerManagement() {
     }
   };
 
-  // ======== CREATE BANNER IN DATABASE ========
-  const createBannerInDatabase = async (fileUrl, field = "homepage", value = "banner1") => {
+  // ======== UPSERT BANNER IN DATABASE ========
+  const upsertBanner = async (position, fileUrl, description = "", redirecturl = "", text = "") => {
     try {
-      console.log("Creating extra banner in database:", fileUrl);
+      console.log("Upserting banner:", { position, fileUrl, description, redirecturl, text });
       
-      const response = await axios.post(`${baseUrl}/slider?tableType=${tableType}`, {
-        tableType: tableType,
-        largeImageURL: fileUrl,
-        field: field || "homepage",
-        value: value || "banner1"
+      const response = await axios.post(`${baseUrl}/banners/upsert`, {
+        position,
+        imageurl: fileUrl,
+        description,
+        redirecturl,
+        text
       });
       
-      console.log("Extra banner created in database:", response.data);
+      console.log("Banner upserted:", response.data);
       return response.data;
       
     } catch (error) {
-      console.error("Error creating extra banner in database:", error);
-      throw new Error(`Failed to create extra banner in database: ${error.message}`);
+      console.error("Error upserting banner:", error);
+      throw new Error(`Failed to upsert banner: ${error.message}`);
     }
   };
 
   // ======== UPDATE BANNER IN DATABASE ========
-  const updateBannerInDatabase = async (fileUrl, sliderId, field = "homepage", value = "banner1") => {
+  const updateBanner = async (position, imageurl, description, redirecturl, text) => {
     try {
-      console.log("Updating extra banner in database:", fileUrl, sliderId);
+      console.log("Updating banner:", { position, imageurl, description, redirecturl, text });
       
-      const response = await axios.put(`${baseUrl}/slider/${sliderId}?tableType=${tableType}`, {
-        tableType: tableType,
-        largeImageURL: fileUrl,
-        field: field,
-        value: value
+      const response = await axios.put(`${baseUrl}/banners/${position}`, {
+        imageurl,
+        description,
+        redirecturl,
+        text
       });
       
-      console.log("Extra banner updated in database:", response.data);
+      console.log("Banner updated:", response.data);
       return response.data;
       
     } catch (error) {
-      console.error("Error updating extra banner in database:", error);
-      throw new Error(`Failed to update extra banner in database: ${error.message}`);
+      console.error("Error updating banner:", error);
+      throw new Error(`Failed to update banner: ${error.message}`);
+    }
+  };
+
+  // ======== DELETE BANNER FROM DATABASE ========
+  const deleteBanner = async (position) => {
+    try {
+      console.log("Deleting banner at position:", position);
+      
+      const response = await axios.delete(`${baseUrl}/banners/${position}`);
+      
+      console.log("Banner deleted:", response.data);
+      return response.data;
+      
+    } catch (error) {
+      console.error("Error deleting banner:", error);
+      throw new Error(`Failed to delete banner: ${error.message}`);
     }
   };
 
@@ -90,15 +124,12 @@ function ExtraBannerManagement() {
     try {
       console.log("Starting upload for file:", file.name);
       
-      const fileExtension = file.name.split(".").pop();
+      const fileExtension = file.name.split(".").pop().toLowerCase();
       console.log("File extension:", fileExtension);
       
-      // Get pre-signed URL from your API
-      const presignRes = await axios.post(`${baseUrl}/upload-url`, {
-        tableType: tableType,
-        fileExtension,
-        contentType: 'image/jpg',
-        fileName: file.name
+      // Step 1: Get pre-signed URL from API
+      const presignRes = await axios.post(`${baseUrl}/banners/upload-url`, {
+        fileExtension
       });
 
       console.log("Pre-signed URL response:", presignRes.data);
@@ -107,18 +138,20 @@ function ExtraBannerManagement() {
         throw new Error("Invalid response from upload-url API");
       }
 
-      const { uploadUrl, fileUrl } = presignRes.data.data;
+      const { uploadUrl, fileUrl, contentType } = presignRes.data.data;
       console.log("Upload URL:", uploadUrl);
       console.log("File URL:", fileUrl);
+      console.log("Content Type:", contentType);
 
-      // Upload file to S3 using pre-signed URL
+      // Step 2: Upload file to S3 using pre-signed URL
       console.log("Uploading file to S3...");
       
+      // Use fetch for S3 upload as it handles presigned URLs better
       const uploadResponse = await fetch(uploadUrl, {
         method: 'PUT',
         body: file,
         headers: {
-          'Content-Type': 'image/jpg'
+          'Content-Type': contentType || file.type
         }
       });
 
@@ -130,7 +163,7 @@ function ExtraBannerManagement() {
 
       console.log("S3 upload successful:", uploadResponse.status);
       
-      // For updates, just return the fileUrl
+      // Return fileUrl for next step
       return { fileUrl };
       
     } catch (err) {
@@ -154,6 +187,83 @@ function ExtraBannerManagement() {
     }
   };
 
+  // =================== HANDLE EDIT BANNER ===================
+  const handleEditBanner = (index) => {
+    const banner = banners[index];
+    if (!banner) return;
+    
+    setEditingBanner({ index, position: index + 1, ...banner });
+    setEditFormData({
+      description: banner.description || "",
+      redirecturl: banner.redirecturl || "",
+      text: banner.text || ""
+    });
+    setEditDialogOpen(true);
+  };
+
+  // =================== HANDLE UPDATE BANNER ===================
+  const handleUpdateBanner = async () => {
+    if (!editingBanner) return;
+
+    try {
+      setUpdating(true);
+      const position = editingBanner.position;
+      const imageurl = editingBanner.imageurl || editingBanner.largeImageURL || editingBanner.url || "";
+      
+      await updateBanner(
+        position,
+        imageurl,
+        editFormData.description,
+        editFormData.redirecturl,
+        editFormData.text
+      );
+
+      // Refresh banners from API
+      await fetchBannersFromDatabase();
+      
+      alert("Banner updated successfully!");
+      setEditDialogOpen(false);
+      setEditingBanner(null);
+      setEditFormData({ description: "", redirecturl: "", text: "" });
+      
+    } catch (err) {
+      console.error("Error updating banner:", err);
+      alert(`Failed to update banner: ${err.message}`);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // =================== HANDLE DELETE BANNER ===================
+  const handleDeleteBanner = async (index) => {
+    const banner = banners[index];
+    if (!banner) return;
+
+    const position = index + 1;
+    const confirmDelete = window.confirm(`Are you sure you want to delete Banner ${position}? This action cannot be undone.`);
+    
+    if (!confirmDelete) {
+      return;
+    }
+
+    try {
+      setDeleting(position);
+      
+      await deleteBanner(position);
+
+      // Refresh banners from API
+      await fetchBannersFromDatabase();
+      
+      alert("Banner deleted successfully!");
+      
+    } catch (err) {
+      console.error("Error deleting banner:", err);
+      alert(`Failed to delete banner: ${err.message}`);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
   // =================== HANDLE IMAGE SELECTION ===================
   const handleImageChange = async (index, event) => {
     const file = event.target.files[0];
@@ -163,22 +273,19 @@ function ExtraBannerManagement() {
       setUploading(true);
       setEditingBannerIndex(index);
 
-      // Upload new image to S3
+      // Step 1 & 2: Upload file to S3 (gets presigned URL and uploads)
       const uploadResult = await uploadFileToS3(file);
 
-      // Get current banner (if exists)
+      // Step 3: Upsert banner with position, imageurl, and default metadata
+      const position = index + 1; // Banner positions start at 1
       const currentBanner = banners[index];
-      const bannerId = currentBanner?.id || currentBanner?.sliderId;
+      
+      // Use existing banner metadata if available, otherwise use defaults
+      const description = currentBanner?.description || "";
+      const redirecturl = currentBanner?.redirecturl || "";
+      const text = currentBanner?.text || "";
 
-      if (bannerId) {
-        // Update existing banner
-        const field = currentBanner.field || "homepage";
-        const value = currentBanner.value || "banner1";
-        await updateBannerInDatabase(uploadResult.fileUrl, bannerId, field, value);
-      } else {
-        // Create new banner for empty slot
-        await createBannerInDatabase(uploadResult.fileUrl, "homepage", "banner1");
-      }
+      await upsertBanner(position, uploadResult.fileUrl, description, redirecturl, text);
 
       // Refresh banners from API
       await fetchBannersFromDatabase();
@@ -215,7 +322,8 @@ function ExtraBannerManagement() {
       <div className="banners-page-top-banners-container" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "20px" }}>
         {[0, 1, 2, 3, 4, 5, 6].map((index) => {
           const banner = banners[index];
-          const imageUrl = banner?.largeImageURL || banner?.url || null;
+          // Handle both new API format (imageurl) and old format (largeImageURL, url)
+          const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
           const bannerId = banner?.id || banner?.sliderId;
           
           return (
@@ -250,7 +358,9 @@ function ExtraBannerManagement() {
                 left: "50%", 
                 transform: "translateX(-50%)",
                 display: "flex",
-                gap: "10px"
+                gap: "10px",
+                flexWrap: "wrap",
+                justifyContent: "center"
               }}>
                 <input
                   type="file"
@@ -275,6 +385,40 @@ function ExtraBannerManagement() {
                 >
                   {uploading && editingBannerIndex === index ? "Uploading..." : "Browse Image"}
                 </Button>
+                {banner && (
+                  <>
+                    {/* <Button
+                      variant="contained"
+                      onClick={() => handleEditBanner(index)}
+                      disabled={uploading || editingBannerIndex === index || updating}
+                      sx={{
+                        backgroundColor: "#1976d2",
+                        color: "white",
+                        fontSize: "12px",
+                        padding: "6px 16px",
+                        "&:hover": { backgroundColor: "#1565c0" },
+                        "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                      }}
+                    >
+                      Update
+                    </Button> */}
+                    <Button
+                      variant="contained"
+                      onClick={() => handleDeleteBanner(index)}
+                      disabled={uploading || editingBannerIndex === index || deleting === index + 1}
+                      sx={{
+                        backgroundColor: "#d32f2f",
+                        color: "white",
+                        fontSize: "12px",
+                        padding: "6px 16px",
+                        "&:hover": { backgroundColor: "#c62828" },
+                        "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                      }}
+                    >
+                      {deleting === index + 1 ? "Deleting..." : "Delete"}
+                    </Button>
+                  </>
+                )}
               </div>
               
               <div style={{ 
@@ -293,6 +437,59 @@ function ExtraBannerManagement() {
           );
         })}
       </div>
+
+      {/* Edit Banner Dialog */}
+      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Banner {editingBanner?.position}</DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            margin="normal"
+            label="Description"
+            fullWidth
+            multiline
+            rows={3}
+            value={editFormData.description}
+            onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+            placeholder="Enter banner description"
+          />
+          <TextField
+            margin="normal"
+            label="Redirect URL"
+            fullWidth
+            value={editFormData.redirecturl}
+            onChange={(e) => setEditFormData({ ...editFormData, redirecturl: e.target.value })}
+            placeholder="https://example.com"
+          />
+          <TextField
+            margin="normal"
+            label="Text"
+            fullWidth
+            value={editFormData.text}
+            onChange={(e) => setEditFormData({ ...editFormData, text: e.target.value })}
+            placeholder="Button text or banner text"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setEditDialogOpen(false);
+            setEditingBanner(null);
+            setEditFormData({ description: "", redirecturl: "", text: "" });
+          }}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleUpdateBanner} 
+            variant="contained"
+            disabled={updating}
+            sx={{
+              backgroundColor: "#1976d2",
+              "&:hover": { backgroundColor: "#1565c0" }
+            }}
+          >
+            {updating ? "Updating..." : "Save"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 }

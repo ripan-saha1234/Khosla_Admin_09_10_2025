@@ -18,6 +18,220 @@
     font-size: 16px;
   }
   
+  .existing-videos-section {
+    max-width: 800px;
+    margin: 0 auto 50px;
+    animation: fadeInUp 0.5s ease;
+  }
+  
+  .section-title {
+    color: #ff3333;
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 25px;
+    text-align: center;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #3a3a3a;
+  }
+  
+  .existing-videos-list {
+    display: grid;
+    gap: 20px;
+  }
+  
+  .existing-video-card {
+    background: #2a2a2a;
+    border: 2px solid #3a3a3a;
+    border-radius: 12px;
+    padding: 25px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+  }
+  
+  .existing-video-card:hover {
+    border-color: #ff3333;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(255, 51, 51, 0.2);
+  }
+  
+  .existing-video-info {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+  }
+  
+  .video-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 100px;
+  }
+  
+  .update-btn,
+  .delete-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  
+  .update-btn {
+    background: #4a9eff;
+    color: white;
+  }
+  
+  .update-btn:hover {
+    background: #6bb3ff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(74, 158, 255, 0.3);
+  }
+  
+  .update-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  .delete-btn {
+    background: #ff3333;
+    color: white;
+  }
+  
+  .delete-btn:hover {
+    background: #cc0000;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 51, 51, 0.3);
+  }
+  
+  .delete-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  .edit-video-form {
+    width: 100%;
+  }
+  
+  .edit-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+  }
+  
+  .save-btn,
+  .cancel-btn {
+    flex: 1;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  
+  .save-btn {
+    background: #28a745;
+    color: white;
+  }
+  
+  .save-btn:hover {
+    background: #218838;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+  }
+  
+  .save-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  .cancel-btn {
+    background: transparent;
+    color: #aaa;
+    border: 2px solid #3a3a3a;
+  }
+  
+  .cancel-btn:hover {
+    background: #3a3a3a;
+    color: white;
+    border-color: #4a4a4a;
+  }
+  
+  .cancel-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  .existing-video-title {
+    color: #ff3333;
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+  }
+  
+  .existing-video-url {
+    color: #4a9eff;
+    font-size: 14px;
+    word-break: break-all;
+    margin: 0;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  
+  .existing-video-url:hover {
+    color: #6bb3ff;
+  }
+  
+  .existing-video-description {
+    color: #ccc;
+    font-size: 14px;
+    margin: 5px 0 0 0;
+    line-height: 1.5;
+  }
+  
+  .existing-video-text {
+    color: #aaa;
+    font-size: 13px;
+    margin: 5px 0 0 0;
+    line-height: 1.4;
+  }
+  
+  .loading-message,
+  .no-videos-message {
+    text-align: center;
+    color: #aaa;
+    font-size: 16px;
+    padding: 40px 20px;
+    background: #2a2a2a;
+    border-radius: 12px;
+    border: 2px solid #3a3a3a;
+  }
+  
+  .submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  .submit-btn:disabled:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  
   .videos-list {
     max-width: 800px;
     margin: 0 auto 30px;
@@ -222,6 +436,26 @@
     .add-btn,
     .submit-btn {
       width: 100%;
+    }
+    
+    .existing-video-card {
+      flex-direction: column;
+      gap: 15px;
+    }
+    
+    .video-actions {
+      flex-direction: row;
+      width: 100%;
+      min-width: auto;
+    }
+    
+    .update-btn,
+    .delete-btn {
+      flex: 1;
+    }
+    
+    .edit-actions {
+      flex-direction: column;
     }
   }
 

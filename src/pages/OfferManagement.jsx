@@ -5,7 +5,7 @@ import { Checkbox, CircularProgress } from "@mui/material";
 import "../css/products.css";
 
 function OfferManagement() {
-  const [buttonText, setButtonText] = useState("Hot Deals");
+  const [buttonText, setButtonText] = useState("");
   const [isEditingButtonText, setIsEditingButtonText] = useState(false);
   const [tempButtonText, setTempButtonText] = useState("");
   const [products, setProducts] = useState([]);
@@ -15,8 +15,24 @@ function OfferManagement() {
   const [itemsPerPage] = useState(20);
   const [totalPages, setTotalPages] = useState(0);
   const [totalProducts, setTotalProducts] = useState(0);
+  const [buttonId, setButtonId] = useState(1);
+  const [buttonColor, setButtonColor] = useState("blue");
+  const [buttonStatus, setButtonStatus] = useState("active");
+  const [buttonLoading, setButtonLoading] = useState(false);
   
   const API_BASE_URL = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev";
+
+  // Helper function to map color string to hex color
+  const getColorHex = (color) => {
+    const colorMap = {
+      "blue": "#ED1B24", // Using red as default since that's the current design
+      "red": "#dc3545",
+      "green": "#28a745",
+      "black": "#000000",
+      "white": "#ffffff"
+    };
+    return colorMap[color?.toLowerCase()] || colorMap["blue"];
+  };
 
   // Fetch products from API
   async function fetchProducts(pageNum = 1) {
@@ -60,15 +76,145 @@ function OfferManagement() {
     setLoading(false);
   }
 
+  // Create button using axios
+  const createButton = async (name, color = "blue", status = "active") => {
+    try {
+      setButtonLoading(true);
+      const response = await axios.post(`${API_BASE_URL}/button`, {
+        operation: "create",
+        data: {
+          name: name,
+          color: color,
+          status: status
+        }
+      });
+      
+      if (response.data && response.data.id) {
+        setButtonId(response.data.id);
+        setButtonText(response.data.data.name);
+        setButtonColor(response.data.data.color);
+        setButtonStatus(response.data.data.status);
+        console.log("Button created successfully:", response.data);
+        return response.data;
+      }
+    } catch (error) {
+      console.error("Error creating button:", error);
+      throw error;
+    } finally {
+      setButtonLoading(false);
+    }
+  };
+
+  // Update button using axios
+  const updateButton = async (id, name, color = "blue", status = "active") => {
+    try {
+      setButtonLoading(true);
+      const response = await axios.post(`${API_BASE_URL}/button`, {
+        operation: "update",
+        id: id,
+        data: {
+          name: name,
+          color: color,
+          status: status
+        }
+      });
+      
+      if (response.data && response.data.data) {
+        setButtonText(response.data.data.name);
+        setButtonColor(response.data.data.color);
+        setButtonStatus(response.data.data.status);
+        console.log("Button updated successfully:", response.data);
+        return response.data;
+      }
+    } catch (error) {
+      console.error("Error updating button:", error);
+      throw error;
+    } finally {
+      setButtonLoading(false);
+    }
+  };
+
+  // Fetch existing button data from API
+  const fetchButton = async (id = 1) => {
+    try {
+      // Use POST request with operation "read" to fetch button data (same as Postman)
+      const response = await axios.post(`${API_BASE_URL}/button`, {
+        operation: "read",
+        id: id
+      });
+      
+      // Response structure: { button: { id, name, color, status, ... } }
+      if (response.data && response.data.button) {
+        const button = response.data.button;
+        setButtonId(button.id);
+        setButtonText(button.name);
+        setButtonColor(button.color);
+        setButtonStatus(button.status);
+        console.log("Button fetched successfully:", button);
+        return button;
+      }
+      // Fallback: Response is an array, find the button with matching id
+      else if (response.data && Array.isArray(response.data)) {
+        const button = response.data.find(btn => btn.id === id);
+        if (button) {
+          setButtonId(button.id);
+          setButtonText(button.name);
+          setButtonColor(button.color);
+          setButtonStatus(button.status);
+          console.log("Button fetched successfully:", button);
+          return button;
+        }
+      }
+      // Fallback: If response is a single object directly
+      else if (response.data && response.data.id) {
+        setButtonId(response.data.id);
+        setButtonText(response.data.name);
+        setButtonColor(response.data.color);
+        setButtonStatus(response.data.status);
+        console.log("Button fetched successfully:", response.data);
+        return response.data;
+      }
+      return null;
+    } catch (error) {
+      console.log("Error fetching button:", error);
+      return null;
+    }
+  };
+
+  // Fetch button data on component mount - only show saved data
+  const initializeButton = async () => {
+    try {
+      // Only fetch existing button data - no creation, no defaults
+      const buttonData = await fetchButton(1);
+      
+      if (buttonData) {
+        // Button exists - show the saved data
+        console.log("Loaded saved button:", buttonData);
+      } else {
+        // Button doesn't exist - don't create, just leave empty
+        console.log("No button found - will remain empty until created");
+      }
+    } catch (error) {
+      console.error("Error fetching button:", error);
+    }
+  };
+
   // Handle button text edit
   const handleEditButtonText = () => {
     setTempButtonText(buttonText);
     setIsEditingButtonText(true);
   };
 
-  const handleSaveButtonText = () => {
+  const handleSaveButtonText = async () => {
     if (tempButtonText.trim()) {
-      setButtonText(tempButtonText.trim());
+      try {
+        await updateButton(buttonId, tempButtonText.trim(), buttonColor, buttonStatus);
+        setButtonText(tempButtonText.trim());
+        alert("Button updated successfully!");
+      } catch (error) {
+        console.error("Error saving button:", error);
+        alert("Failed to update button. Please try again.");
+      }
     }
     setIsEditingButtonText(false);
   };
@@ -124,6 +270,7 @@ function OfferManagement() {
 
   useEffect(() => {
     fetchProducts();
+    initializeButton();
   }, []);
 
   return (
@@ -166,21 +313,31 @@ function OfferManagement() {
               />
               <button
                 onClick={handleSaveButtonText}
+                disabled={buttonLoading}
                 style={{
                   padding: "10px 20px",
-                  backgroundColor: "#28a745",
+                  backgroundColor: buttonLoading ? "#6c757d" : "#28a745",
                   color: "white",
                   border: "none",
                   borderRadius: "6px",
-                  cursor: "pointer",
+                  cursor: buttonLoading ? "not-allowed" : "pointer",
                   display: "flex",
                   alignItems: "center",
                   gap: "5px",
                   fontSize: "14px",
-                  fontWeight: "600"
+                  fontWeight: "600",
+                  opacity: buttonLoading ? 0.7 : 1
                 }}
               >
-                <Check size={18} /> Save
+                {buttonLoading ? (
+                  <>
+                    <CircularProgress size={18} sx={{ color: "white" }} /> Saving...
+                  </>
+                ) : (
+                  <>
+                    <Check size={18} /> Save
+                  </>
+                )}
               </button>
               <button
                 onClick={handleCancelButtonText}
@@ -205,15 +362,17 @@ function OfferManagement() {
             <>
               <div style={{
                 padding: "12px 30px",
-                backgroundColor: "#ED1B24",
+                backgroundColor: getColorHex(buttonColor),
                 color: "white",
                 borderRadius: "6px",
                 fontSize: "18px",
                 fontWeight: "600",
                 minWidth: "150px",
-                textAlign: "center"
+                textAlign: "center",
+                opacity: buttonStatus === "active" ? 1 : 0.6
               }}>
                 {buttonText}
+                {buttonLoading && <span style={{ marginLeft: "10px", fontSize: "12px" }}>...</span>}
               </div>
               <button
                 onClick={handleEditButtonText}
