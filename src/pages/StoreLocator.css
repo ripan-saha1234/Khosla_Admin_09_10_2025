@@ -245,6 +245,27 @@
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
   }
   
+  .form-input[type="file"] {
+    padding: 0.5rem;
+    cursor: pointer;
+  }
+  
+  .form-input[type="file"]::-webkit-file-upload-button {
+    background: #ED1B24;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    margin-right: 1rem;
+  }
+  
+  textarea.form-input {
+    resize: vertical;
+    min-height: 100px;
+  }
+  
   .error-text {
     display: block;
     color: #ED1B24;
@@ -363,12 +384,90 @@
       padding: 0.75rem 0.5rem;
     }
   
-    .action-buttons {
-      flex-direction: column;
-    }
-  
-    .btn-edit {
-      margin-right: 0;
-      margin-bottom: 0.5rem;
-    }
+  .action-buttons {
+    flex-direction: column;
   }
+
+  .btn-edit {
+    margin-right: 0;
+    margin-bottom: 0.5rem;
+  }
+}
+
+/* Search Section */
+.stores-search-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 15px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  margin-bottom: 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.search-bar-container {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  background: #f8f9fa;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  transition: all 0.3s ease;
+}
+
+.search-bar-container:focus-within {
+  border-color: #ED1B24;
+  box-shadow: 0 0 0 3px rgba(237, 27, 36, 0.1);
+}
+
+.search-icon {
+  color: #868e96;
+  margin-right: 0.75rem;
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 1rem;
+  color: #495057;
+  font-family: inherit;
+}
+
+.search-input::placeholder {
+  color: #adb5bd;
+}
+
+.clear-filters-btn {
+  background:red;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.clear-filters-btn:hover {
+  background: #e9ecef;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 768px) {
+  .stores-search-section {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .clear-filters-btn {
+    width: 100%;
+  }
+}
