@@ -29,26 +29,21 @@ function Products() {
   const [itemsPerPage] = useState(20); // You can change this
   const [totalPages, setTotalPages] = useState(0);
   const API_BASE_URL = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev";
+  const FILTER_API_BASE_URL = "https://ub3uejdxxh.execute-api.ap-south-1.amazonaws.com/dev";
 
   // Category dropdown state
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [categories] = useState([
-    { value: "all", label: "All Categories" },
-    { value: "electronics", label: "Electronics" },
-    { value: "clothing", label: "Clothing" },
-    { value: "home", label: "Home & Living" },
-    { value: "sports", label: "Sports & Outdoors" },
-    { value: "books", label: "Books" },
-    { value: "toys", label: "Toys & Games" },
-    { value: "beauty", label: "Beauty & Personal Care" },
-    { value: "automotive", label: "Automotive" },
+  const [categories, setCategories] = useState([
+    { value: "all", label: "All Categories" }
   ]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
 
   // Featured products state (desktop and mobile)
   const [featuredProducts, setFeaturedProducts] = useState({
     desktop: new Set(),
     mobile: new Set()
   });
+  const [featuredUpdating, setFeaturedUpdating] = useState({});
 
 
   async function fetchSearchResults(){
@@ -89,27 +84,11 @@ function Products() {
         productsArray = [data];
       }
       
-      // Transform products
-      const transformedProducts = productsArray.map(product => ({
-        id: product.PID,
-        name: product.Name,
-        regularPrice: product.Regular_price,
-        salePrice: product.Sale_price,
-        type: product.Type,
-        model: product.Model,
-        shortDesc: product.Short_description,
-        description: product.Description,
-        inStock: product.In_stock,
-        categories: product.Categories ? product.Categories.split(',').map(cat => cat.trim()) : [],
-        brand: product.Brands,
-        images: product.Images ? product.Images.split(',').map(img => {
-          const trimmedImg = img.trim();
-          if (trimmedImg.startsWith('/uploads')) {
-            return `https://khoslaslider.s3.ap-south-1.amazonaws.com${trimmedImg}`;
-          }
-          return trimmedImg;
-        }) : []
-      }));
+      // Fetch specifications and merge with products
+      const specificationsMap = await fetchSpecifications();
+      
+      // Transform products, merging specifications
+      const transformedProducts = productsArray.map(product => transformProductData(product, specificationsMap));
 
       setProducts(transformedProducts);
     } catch (error) {
@@ -142,13 +121,161 @@ function Products() {
   const [openSingleProductDialog, setOpenSingleProductDialog] = useState(false);
   const [openBulkProductDialog, setOpenBulkProductDialog] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
+  const [openSpecificationDialog, setOpenSpecificationDialog] = useState(false);
+  const [specificationProduct, setSpecificationProduct] = useState(null);
+
+  // Helper function to transform product data
+  const transformProductData = (product, specificationsMap = {}) => ({
+    id: product.PID,
+    name: product.Name,
+    regularPrice: product.Regular_price,
+    salePrice: product.Sale_price,
+    type: product.Type,
+    model: product.Model,
+    shortDesc: product.Short_description,
+    description: product.Description,
+    inStock: product.In_stock,
+    categories: product.Categories ? product.Categories.split(',').map(cat => cat.trim()) : [],
+    brand: product.Brands,
+    // Use specification from specifications API if available, otherwise use product's Specification field
+    specification: specificationsMap[product.Model] || product.Specification || "",
+    isFeatured: String(product?.is_featured || product?.Is_featured || "false") === "true",
+    images: product.Images ? product.Images.split(',').map(img => {
+      // Add base URL if image path is relative
+      const trimmedImg = img.trim();
+      if (trimmedImg.startsWith('/uploads')) {
+        return `https://khoslaslider.s3.ap-south-1.amazonaws.com${trimmedImg}`;
+      }
+      return trimmedImg;
+    }) : []
+  });
+
+  // Fetch all specifications and create a map by Model_no
+  async function fetchSpecifications() {
+    try {
+      // Try to fetch all specifications - adjust endpoint if needed
+      const response = await fetch(`${API_BASE_URL}/specifications`);
+      
+      if (!response.ok) {
+        // If endpoint doesn't exist or returns error, return empty map
+        console.warn("Could not fetch specifications:", response.status);
+        return {};
+      }
+
+      const data = await response.json();
+      
+      // Handle different response structures
+      let specificationsArray = [];
+      if (Array.isArray(data)) {
+        specificationsArray = data;
+      } else if (data.specifications && Array.isArray(data.specifications)) {
+        specificationsArray = data.specifications;
+      } else if (data.data && Array.isArray(data.data)) {
+        specificationsArray = data.data;
+      }
+
+      // Create a map: Model_no -> Specification
+      const specificationsMap = {};
+      specificationsArray.forEach(spec => {
+        const modelNo = spec.Model_no || spec.model_no || spec.Model_No;
+        const specText = spec.Specification || spec.specification;
+        if (modelNo && specText) {
+          specificationsMap[modelNo] = specText;
+        }
+      });
+
+      return specificationsMap;
+    } catch (error) {
+      console.warn("Error fetching specifications:", error);
+      return {};
+    }
+  }
+
+  // Fetch products filtered by category
+  async function fetchProductsByCategory(categoryName, pageNum = 1) {
+    setLoading(true);
+    try {
+      // Use POST method with field and value as query parameters in URL
+      const encodedCategory = encodeURIComponent(categoryName);
+      const res = await fetch(`${FILTER_API_BASE_URL}/excel-data?field=categories&value=${encodedCategory}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('API Error Response:', errorText);
+        throw new Error(`Failed to fetch products by category: ${res.status} ${res.statusText}`);
+      }
+
+      const data = await res.json();
+      
+      // Log the response for debugging
+      console.log('Raw API Response:', data);
+
+      console.log('=== Category Filter API Response ===');
+      console.log('Category:', categoryName);
+      console.log('Complete API Response:', data);
+      console.log('===================================');
+
+      // Handle different response structures
+      let productsArray = [];
+      if (Array.isArray(data)) {
+        productsArray = data;
+      } else if (data.products && Array.isArray(data.products)) {
+        productsArray = data.products;
+      } else if (data.data && Array.isArray(data.data)) {
+        productsArray = data.data;
+      } else if (data.body) {
+        // Sometimes API wraps response in body
+        const bodyData = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
+        if (Array.isArray(bodyData)) {
+          productsArray = bodyData;
+        } else if (bodyData.products) {
+          productsArray = bodyData.products;
+        }
+      }
+
+      // Fetch specifications and merge with products
+      const specificationsMap = await fetchSpecifications();
+      
+      // Transform products, merging specifications
+      const transformedProducts = productsArray.map(product => transformProductData(product, specificationsMap));
+
+      // Apply pagination to filtered results
+      const totalFiltered = transformedProducts.length;
+      const offset = (pageNum - 1) * itemsPerPage;
+      const paginatedProducts = transformedProducts.slice(offset, offset + itemsPerPage);
+
+      setProducts(paginatedProducts);
+      setTotalProducts(totalFiltered);
+      setTotalPages(Math.ceil(totalFiltered / itemsPerPage));
+      setCurrentPage(pageNum);
+    } catch (error) {
+      console.error("Error fetching products by category:", error);
+      console.error("Error details:", error.message);
+      alert(`Failed to fetch products by category: ${error.message}. Please check the console for details.`);
+      setProducts([]);
+      setTotalProducts(0);
+      setTotalPages(0);
+    }
+    setLoading(false);
+  }
 
   async function fetchProducts(pageNum = currentPage){
     setLoading(true);
     try {
       const offset = (pageNum - 1) * itemsPerPage;
-      const res = await fetch(`${API_BASE_URL}/products?limit=${itemsPerPage}&offset=${offset}`);
-      const data = await res.json();
+      
+      // Fetch both products and specifications in parallel
+      const [productsRes, specificationsMap] = await Promise.all([
+        fetch(`${API_BASE_URL}/products?limit=${itemsPerPage}&offset=${offset}`),
+        fetchSpecifications()
+      ]);
+      
+      const data = await productsRes.json();
 
       console.log('=== API Response ===');
       console.log('Complete API Response:', data);
@@ -158,31 +285,12 @@ function Products() {
       console.log('Items per page:', itemsPerPage);
       console.log('Offset:', offset);
       console.log('First product raw data:', data.products?.[0]);
+      console.log('Specifications map:', specificationsMap);
       console.log('==================');
 
       if (data.products && data.products.length > 0) {
-        // Transform API data to match our component structure
-        const transformedProducts = data.products.map(product => ({
-          id: product.PID,
-          name: product.Name,
-          regularPrice: product.Regular_price,
-          salePrice: product.Sale_price,
-          type: product.Type,
-          model: product.Model,
-          shortDesc: product.Short_description,
-          description: product.Description,
-          inStock: product.In_stock,
-          categories: product.Categories ? product.Categories.split(',').map(cat => cat.trim()) : [],
-          brand: product.Brands,
-          images: product.Images ? product.Images.split(',').map(img => {
-            // Add base URL if image path is relative
-            const trimmedImg = img.trim();
-            if (trimmedImg.startsWith('/uploads')) {
-              return `https://khoslaslider.s3.ap-south-1.amazonaws.com${trimmedImg}`;
-            }
-            return trimmedImg;
-          }) : []
-        }));
+        // Transform API data to match our component structure, merging specifications
+        const transformedProducts = data.products.map(product => transformProductData(product, specificationsMap));
 
         setProducts(transformedProducts); // Replace instead of append for pagination
         setTotalProducts(data.total);
@@ -199,7 +307,11 @@ function Products() {
   // Pagination handlers
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= totalPages) {
-      fetchProducts(newPage);
+      if (selectedCategory === "all") {
+        fetchProducts(newPage);
+      } else {
+        fetchProductsByCategory(selectedCategory, newPage);
+      }
     }
   };
 
@@ -246,11 +358,172 @@ function Products() {
     });
   };
 
+  // Toggle featured flag for a product
+  const handleFeaturedToggle = async (product, checked) => {
+    const model = product?.model || product?.Model;
+    if (!model) {
+      alert("Missing product model. Please try again.");
+      return;
+    }
+
+    setFeaturedUpdating((prev) => ({ ...prev, [product.id]: true }));
+
+    try {
+      console.log('=== Featured Toggle Request ===');
+      console.log('Product Model:', model);
+      console.log('Product ID:', product.id);
+      console.log('New Featured Status:', checked);
+      console.log('API URL:', `${API_BASE_URL}/products/${model}/featured`);
+      
+      const response = await fetch(`${API_BASE_URL}/products/${model}/featured`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_featured: checked ? "true" : "false" })
+      });
+
+      console.log('Response Status:', response.status);
+      console.log('Response OK:', response.ok);
+
+      if (!response.ok) {
+        // Try to get error details from response
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.text();
+          console.error('API Error Response Body:', errorData);
+          if (errorData) {
+            try {
+              const parsedError = JSON.parse(errorData);
+              errorMessage = parsedError.message || parsedError.error || errorMessage;
+            } catch {
+              errorMessage = errorData || errorMessage;
+            }
+          }
+        } catch (parseError) {
+          console.error('Error parsing error response:', parseError);
+        }
+
+        // Determine if it's a frontend or backend error
+        if (response.status >= 500) {
+          console.error('❌ BACKEND ERROR: Server error (5xx)');
+          throw new Error(`Backend Error: ${errorMessage}`);
+        } else if (response.status >= 400 && response.status < 500) {
+          console.error('❌ FRONTEND/CLIENT ERROR: Request issue (4xx)');
+          throw new Error(`Client Error: ${errorMessage}`);
+        } else {
+          throw new Error(`Request Failed: ${errorMessage}`);
+        }
+      }
+
+      // Success - parse response
+      let responseData;
+      try {
+        const responseText = await response.text();
+        if (responseText) {
+          responseData = JSON.parse(responseText);
+        }
+      } catch (parseError) {
+        console.warn('Could not parse response as JSON, but request was successful');
+      }
+
+      console.log('✅ Featured status updated successfully');
+      console.log('Response Data:', responseData);
+      console.log('==============================');
+
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === product.id ? { ...p, isFeatured: checked } : p
+        )
+      );
+    } catch (error) {
+      console.error("❌ Error updating featured status:", error);
+      console.error("Error Type:", error.name);
+      console.error("Error Message:", error.message);
+      console.error("Full Error:", error);
+      
+      // Check if it's a network error (frontend connectivity issue)
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        console.error('❌ FRONTEND ERROR: Network/Connectivity issue');
+        alert("Network error: Could not connect to server. Please check your internet connection.");
+      } else if (error.message.includes('Backend Error')) {
+        alert("Backend Error: Server issue. Please try again later or contact support.");
+      } else if (error.message.includes('Client Error')) {
+        alert(`Request Error: ${error.message}. Please check the product data and try again.`);
+      } else {
+        alert(`Could not update featured status: ${error.message}. Please check the console for details.`);
+      }
+    } finally {
+      setFeaturedUpdating((prev) => ({ ...prev, [product.id]: false }));
+    }
+  };
+
+  // Fetch categories from API
+  async function fetchCategories() {
+    setLoadingCategories(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/categories`);
+      if (!res.ok) {
+        throw new Error("Failed to fetch categories");
+      }
+      const data = await res.json();
+      
+      // Handle the API response structure: { success, count, categories: [...] }
+      let categoriesArray = [];
+      if (data.categories && Array.isArray(data.categories)) {
+        categoriesArray = data.categories;
+      } else if (Array.isArray(data)) {
+        categoriesArray = data;
+      } else if (data.data && Array.isArray(data.data)) {
+        categoriesArray = data.data;
+      } else {
+        console.warn("Unexpected categories API response structure:", data);
+        categoriesArray = [];
+      }
+      
+      // Transform API response to dropdown format
+      // Categories are strings, so use each string as both value and label
+      const transformedCategories = categoriesArray.map(category => {
+        // If category is a string, use it as both value and label
+        if (typeof category === 'string') {
+          return { value: category, label: category };
+        }
+        // If category is an object, extract value and label
+        const value = category.value || category.id || category.category_id || category.name || category.category || '';
+        const label = category.label || category.name || category.category_name || category.category || value;
+        return { value: String(value), label: String(label) };
+      });
+      
+      // Add "All Categories" option at the beginning
+      setCategories([
+        { value: "all", label: "All Categories" },
+        ...transformedCategories
+      ]);
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+      // Keep default "All Categories" option on error
+      setCategories([{ value: "all", label: "All Categories" }]);
+    } finally {
+      setLoadingCategories(false);
+    }
+  }
+
   // Handle category filter
   const handleCategoryChange = (e) => {
-    setSelectedCategory(e.target.value);
-    // You can add filtering logic here if needed
-    // For now, it's just a dropdown with demo data
+    const categoryValue = e.target.value;
+    setSelectedCategory(categoryValue);
+    
+    // Reset to first page when category changes
+    setCurrentPage(1);
+    
+    // Exit search mode when filtering by category
+    setIsSearchMode(false);
+    setSearchTerm("");
+    
+    // Fetch products based on selected category
+    if (categoryValue === "all") {
+      fetchProducts(1);
+    } else {
+      fetchProductsByCategory(categoryValue, 1);
+    }
   };
 
   useEffect(() => {
@@ -258,6 +531,11 @@ function Products() {
       fetchProducts();
     }
   }, [isSearchMode]);
+
+  // Fetch categories on component mount
+  useEffect(() => {
+    fetchCategories();
+  }, []);
 
   // Removed infinite scroll logic - now using pagination
 
@@ -319,6 +597,7 @@ function Products() {
           Shipping_class: "standard",
           Images: newProduct.images?.join(", ") || "",
           Brands: newProduct.brand || "",
+          Specification: newProduct.specification || "",
           Attribute_1_name: "",
           Attribute_1_value: "",
           Attribute_1_visible: "1",
@@ -340,10 +619,48 @@ function Products() {
         const updatedProduct = await response.json();
         console.log("Product updated:", updatedProduct);
         
+        // Also update the specification in the specifications API if specification is provided
+        if (newProduct.specification && newProduct.specification.trim() !== "" && productModel) {
+          try {
+            const specResponse = await fetch(`${API_BASE_URL}/specifications/${productModel}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                Model_no: productModel,
+                Specification: newProduct.specification
+              })
+            });
+            
+            if (!specResponse.ok) {
+              // If specification doesn't exist, create it
+              const createResponse = await fetch(`${API_BASE_URL}/specifications`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  Model_no: productModel,
+                  Specification: newProduct.specification
+                })
+              });
+              
+              if (!createResponse.ok) {
+                console.warn("Failed to sync specification to specifications API");
+              }
+            }
+          } catch (specError) {
+            console.warn("Error syncing specification:", specError);
+            // Don't fail the product update if specification sync fails
+          }
+        }
+        
         alert("Product updated successfully!");
         
         // Refresh the product list from API to show updated data
-        fetchProducts(currentPage);
+        // Maintain category filter when refreshing
+        if (selectedCategory === "all") {
+          fetchProducts(currentPage);
+        } else {
+          fetchProductsByCategory(selectedCategory, currentPage);
+        }
       } catch (error) {
         console.error("Error updating product:", error);
         alert("Failed to update product. Please try again.");
@@ -383,6 +700,7 @@ function Products() {
           Shipping_class: "standard",
           Images: newProduct.images?.join(", ") || "",
           Brands: newProduct.brand || "",
+          Specification: newProduct.specification || "",
           Attribute_1_name: "",
           Attribute_1_value: "",
           Attribute_1_visible: "1",
@@ -405,7 +723,12 @@ function Products() {
         alert("Product added successfully!");
         
         // Refresh the product list from API
-        fetchProducts(currentPage);
+        // Maintain category filter when refreshing
+        if (selectedCategory === "all") {
+          fetchProducts(currentPage);
+        } else {
+          fetchProductsByCategory(selectedCategory, currentPage);
+        }
       } catch (error) {
         console.error("Error creating product:", error);
         alert("Failed to add product. Please try again.");
@@ -448,7 +771,12 @@ function Products() {
       alert("Product deleted successfully!");
       
       // Refresh the product list from API
-      fetchProducts(currentPage);
+      // Maintain category filter when refreshing
+      if (selectedCategory === "all") {
+        fetchProducts(currentPage);
+      } else {
+        fetchProductsByCategory(selectedCategory, currentPage);
+      }
     } catch (error) {
       console.error("Error deleting product:", error);
       alert("Failed to delete product. Please try again.");
@@ -466,22 +794,28 @@ function Products() {
             <select
               value={selectedCategory}
               onChange={handleCategoryChange}
+              disabled={loadingCategories}
               style={{
                 padding: "8px 15px",
                 fontSize: "14px",
                 border: "1px solid #000",
                 borderRadius: "6px",
-                backgroundColor: "white",
-                cursor: "pointer",
+                backgroundColor: loadingCategories ? "#f5f5f5" : "white",
+                cursor: loadingCategories ? "not-allowed" : "pointer",
                 marginRight: "10px",
-                minWidth: "180px"
+                minWidth: "180px",
+                opacity: loadingCategories ? 0.6 : 1
               }}
             >
-              {categories.map(category => (
-                <option key={category.value} value={category.value}>
-                  {category.label}
-                </option>
-              ))}
+              {loadingCategories ? (
+                <option value="all">Loading categories...</option>
+              ) : (
+                categories.map(category => (
+                  <option key={category.value} value={category.value}>
+                    {category.label}
+                  </option>
+                ))
+              )}
             </select>
             <div className="products-page-product-search">
               <input 
@@ -555,6 +889,35 @@ function Products() {
                       gap: "8px"
                     }}>
                       <Checkbox
+                        checked={!!product?.isFeatured}
+                        disabled={featuredUpdating[product.id]}
+                        onChange={(e) => handleFeaturedToggle(product, e.target.checked)}
+                        sx={{
+                          color: "#ED1B24",
+                          '&.Mui-checked': {
+                            color: "#ED1B24",
+                          },
+                          padding: "4px"
+                        }}
+                      />
+                      <label style={{
+                        fontSize: "13px",
+                        fontWeight: "500",
+                        cursor: "pointer",
+                        userSelect: "none"
+                      }}>
+                        Featured
+                        {featuredUpdating[product.id] && (
+                          <CircularProgress size={14} sx={{ color: "#ED1B24", marginLeft: "8px" }} />
+                        )}
+                      </label>
+                    </div>
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px"
+                    }}>
+                      <Checkbox
                         checked={featuredProducts.desktop.has(product?.id)}
                         onChange={() => handleFeaturedDesktopChange(product?.id)}
                         sx={{
@@ -601,6 +964,17 @@ function Products() {
                     </div>
                   </div>
                   <div className="products-page-product-button-container">
+                    {(!product?.specification || product?.specification.trim() === "") && (
+                      <button 
+                        onClick={() => {
+                          setSpecificationProduct(product);
+                          setOpenSpecificationDialog(true);
+                        }}
+                        style={{ backgroundColor: '#28a745', marginRight: '5px' }}
+                      >
+                      SPEC
+                      </button>
+                    )}
                     <button onClick={() => handleEditProduct(product)}>EDIT</button>
                     <button onClick={() => handleDeleteProduct(product)}>DELETE</button>
                   </div>
@@ -610,7 +984,13 @@ function Products() {
           }
           {!loading && products.length === 0 && (
             <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-              <p>No products found. {isSearchMode ? 'Try a different search term.' : 'Add your first product!'}</p>
+              <p>No products found. {
+                isSearchMode 
+                  ? 'Try a different search term.' 
+                  : selectedCategory !== "all" 
+                    ? `No products found in category "${selectedCategory}".` 
+                    : 'Add your first product!'
+              }</p>
             </div>
           )}
         </div>
@@ -686,6 +1066,14 @@ function Products() {
         }}
         product={editProduct}
         onSubmit={handleSubmitSingleProduct}
+        onRefresh={() => {
+          if (selectedCategory === "all") {
+            fetchProducts(currentPage);
+          } else {
+            fetchProductsByCategory(selectedCategory, currentPage);
+          }
+        }}
+        API_BASE_URL={API_BASE_URL}
       />
 
       {/* Add Bulk Product Dialog */}
@@ -693,6 +1081,24 @@ function Products() {
         open={openBulkProductDialog}
         onClose={() => setOpenBulkProductDialog(false)}
         onSubmit={handleSubmitBulkProduct}
+      />
+
+      {/* Specification Dialog */}
+      <SpecificationDialog
+        open={openSpecificationDialog}
+        onClose={() => {
+          setOpenSpecificationDialog(false);
+          setSpecificationProduct(null);
+        }}
+        product={specificationProduct}
+        onSuccess={() => {
+          // Refresh products after specification update
+          if (selectedCategory === "all") {
+            fetchProducts(currentPage);
+          } else {
+            fetchProductsByCategory(selectedCategory, currentPage);
+          }
+        }}
       />
     </>
 
@@ -734,7 +1140,7 @@ function AddProductDialog({ open, onClose, onSelect }) {
 }
 
 // 2) AddSingleProductDialog: Used both for adding and editing a product.
-function AddSingleProductDialog({ open, onClose, product, onSubmit }) {
+function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, API_BASE_URL }) {
   const [id, setId] = useState(product ? product?.id : "");
   const [name, setName] = useState(product ? product?.name : "");
   const [type, setType] = useState(product ? product?.type : "");
@@ -746,6 +1152,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit }) {
   const [regularPrice, setRegularPrice] = useState(product ? product?.regularPrice : "");
   const [categories, setCategories] = useState(product && product?.categories ? product?.categories?.join(", ") : "");
   const [brand, setBrand] = useState(product ? product?.brand : "");
+  const [specification, setSpecification] = useState(product ? product?.specification || "" : "");
   const [images, setImages] = useState(product && product?.images ? product?.images?.join(", ") : "");
   const [currentUrl, setCurrentUrl] = useState(product ? product?.images[0] : "");
 
@@ -956,6 +1363,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit }) {
       regularPrice,
       categories: categories?.split(",").map((cat) => cat?.trim()).filter(Boolean),
       brand,
+      specification,
       images: showImageUpload && apiReturnedImageUrls.length > 0
         ? apiReturnedImageUrls  // Use S3 uploaded URLs from API
         : images?.split(",").map((img) => img?.trim()).filter(Boolean), // Use existing URL images
@@ -1058,6 +1466,59 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit }) {
           value={brand}
           onChange={(e) => setBrand(e.target.value)}
         />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px' }}>
+          <TextField
+            margin="normal"
+            label="Specification"
+            fullWidth
+            multiline
+            rows={4}
+            value={specification}
+            onChange={(e) => setSpecification(e.target.value)}
+            style={{ flex: 1 }}
+          />
+          {product && product.specification && product.specification.trim() !== "" && (
+            <Button
+              variant="contained"
+              color="error"
+              onClick={async () => {
+                if (window.confirm("Are you sure you want to delete this specification?")) {
+                  try {
+                    const productModel = product.model || model;
+                    const response = await fetch(`${API_BASE_URL}/specifications/${productModel}`, {
+                      method: 'DELETE',
+                      headers: { 'Content-Type': 'application/json' }
+                    });
+                    
+                    if (!response.ok) {
+                      throw new Error("Failed to delete specification");
+                    }
+                    
+                    alert("Specification deleted successfully!");
+                    setSpecification("");
+                    
+                    // Refresh products
+                    if (onRefresh) {
+                      onRefresh();
+                    }
+                  } catch (error) {
+                    console.error("Error deleting specification:", error);
+                    alert("Failed to delete specification. Please try again.");
+                  }
+                }
+              }}
+              sx={{ 
+                backgroundColor: '#dc3545',
+                '&:hover': { backgroundColor: '#c82333' },
+                minWidth: '120px',
+                height: '40px',
+                marginTop: '16px'
+              }}
+            >
+              Delete Spec
+            </Button>
+          )}
+        </div>
         
         {/* Commented out for image upload feature */}
         {/* <TextField
@@ -1304,8 +1765,189 @@ function AddBulkProductDialog({ open, onClose, onSubmit }) {
   );
 }
 
+// 4) SpecificationDialog: For adding/editing/deleting product specifications
+function SpecificationDialog({ open, onClose, product, onSuccess }) {
+  const [modelNo, setModelNo] = useState("");
+  const [specification, setSpecification] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const API_BASE_URL = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev";
 
+  // Update form when product changes
+  useEffect(() => {
+    const loadSpecification = async () => {
+      if (product) {
+        const model = product.model || "";
+        setModelNo(model);
+        
+        // First set from product data
+        let spec = product.specification || "";
+        let hasSpec = !!(spec && spec.trim() !== "");
+        
+        // Try to fetch from specifications API if model exists
+        if (model) {
+          try {
+            const response = await fetch(`${API_BASE_URL}/specifications/${model}`);
+            if (response.ok) {
+              const specData = await response.json();
+              // Handle different response structures
+              const fetchedSpec = specData.Specification || specData.specification || specData.Spec || "";
+              if (fetchedSpec && fetchedSpec.trim() !== "") {
+                spec = fetchedSpec;
+                hasSpec = true;
+              }
+            }
+          } catch (error) {
+            console.warn("Could not fetch specification from API:", error);
+            // Use product specification as fallback
+          }
+        }
+        
+        setSpecification(spec);
+        setIsEditing(hasSpec);
+      } else {
+        setModelNo("");
+        setSpecification("");
+        setIsEditing(false);
+      }
+    };
+    
+    loadSpecification();
+  }, [product]);
 
+  const handleSubmit = async () => {
+    if (!modelNo.trim()) {
+      alert("Model number is required!");
+      return;
+    }
 
+    if (!specification.trim()) {
+      alert("Specification is required!");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const url = `${API_BASE_URL}/specifications${isEditing ? `/${modelNo}` : ""}`;
+      const method = isEditing ? "PUT" : "POST";
+      
+      const response = await fetch(url, {
+        method: method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          Model_no: modelNo,
+          Specification: specification
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Failed to save specification");
+      }
+
+      alert(isEditing ? "Specification updated successfully!" : "Specification added successfully!");
+      
+      if (onSuccess) {
+        onSuccess();
+      }
+      
+      onClose();
+    } catch (error) {
+      console.error("Error saving specification:", error);
+      alert(`Failed to save specification: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm("Are you sure you want to delete this specification?")) {
+      return;
+    }
+
+    if (!modelNo.trim()) {
+      alert("Model number is required!");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/specifications/${modelNo}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Failed to delete specification");
+      }
+
+      alert("Specification deleted successfully!");
+      
+      if (onSuccess) {
+        onSuccess();
+      }
+      
+      onClose();
+    } catch (error) {
+      console.error("Error deleting specification:", error);
+      alert(`Failed to delete specification: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{isEditing ? "Edit Specification" : "Add Specification"}</DialogTitle>
+      <DialogContent dividers>
+        <TextField
+          margin="normal"
+          label="Model Number"
+          fullWidth
+          value={modelNo}
+          onChange={(e) => setModelNo(e.target.value)}
+          disabled={isEditing} // Disable model number when editing
+          required
+        />
+        <TextField
+          margin="normal"
+          label="Specification"
+          fullWidth
+          multiline
+          rows={6}
+          value={specification}
+          onChange={(e) => setSpecification(e.target.value)}
+          required
+        />
+      </DialogContent>
+      <DialogActions>
+        {isEditing && (
+          <Button
+            onClick={handleDelete}
+            variant="contained"
+            color="error"
+            disabled={loading}
+            sx={{ backgroundColor: "#dc3545", "&:hover": { backgroundColor: "#c82333" } }}
+          >
+            {loading ? "Deleting..." : "Delete"}
+          </Button>
+        )}
+        <Button onClick={onClose} disabled={loading}>
+          Cancel
+        </Button>
+        <Button
+          onClick={handleSubmit}
+          variant="contained"
+          color="primary"
+          disabled={loading}
+          sx={{ backgroundColor: "black" }}
+        >
+          {loading ? (isEditing ? "Updating..." : "Adding...") : (isEditing ? "Update" : "Add")}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
 
 export default Products;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, RefreshCcw } from 'lucide-react';
+import { Search, RefreshCcw, X } from 'lucide-react';
 import axios from 'axios';
 import './StoreLocator.css';
 
@@ -171,62 +171,38 @@ function StoreLocator() {
   };
 
   // ======== HANDLE UPLOAD FILE LOGIC (Presigned URL) ========
-  const uploadFileToS3 = async (file, storename) => {
+  const uploadFileToS3 = async (file) => {
     try {
       console.log("Starting upload for file:", file.name);
       
       const fileExtension = file.name.split(".").pop().toLowerCase();
       console.log("File extension:", fileExtension);
       
-      // Determine content type based on file extension
-      const contentTypeMap = {
-        'jpg': 'image/jpeg',
-        'jpeg': 'image/jpeg',
-        'png': 'image/png',
-        'gif': 'image/gif',
-        'webp': 'image/webp'
-      };
-      const contentType = contentTypeMap[fileExtension] || file.type || 'image/jpeg';
-      
       // Step 1: Get pre-signed URL from API
-      const presignRes = await axios.post(`${API_BASE_URL}/stores`, {
-        operation: "generate_upload_url",
-        data: {
-          storename: storename || formData.storename || "store",
-          file_extension: fileExtension,
-          content_type: contentType
-        }
+      const presignRes = await axios.post(`${API_BASE_URL}/banners/upload-url`, {
+        fileExtension
       });
 
       console.log("Pre-signed URL response:", presignRes.data);
       
-      // Handle response structure - could be direct data or wrapped in body
-      let responseData = presignRes.data;
-      if (responseData.body && typeof responseData.body === 'string') {
-        responseData = JSON.parse(responseData.body);
-      } else if (responseData.body && typeof responseData.body === 'object') {
-        responseData = responseData.body;
-      }
-      
-      // Extract upload URL and file URL from response
-      const uploadUrl = responseData.data?.uploadUrl || responseData.uploadUrl || responseData.data?.upload_url;
-      const fileUrl = responseData.data?.fileUrl || responseData.fileUrl || responseData.data?.file_url;
-      
-      if (!uploadUrl) {
-        throw new Error("Invalid response from upload-url API: Missing uploadUrl");
+      if (!presignRes.data || !presignRes.data.data) {
+        throw new Error("Invalid response from upload-url API");
       }
 
+      const { uploadUrl, fileUrl, contentType } = presignRes.data.data;
       console.log("Upload URL:", uploadUrl);
       console.log("File URL:", fileUrl);
+      console.log("Content Type:", contentType);
 
       // Step 2: Upload file to S3 using pre-signed URL
       console.log("Uploading file to S3...");
       
+      // Use fetch for S3 upload as it handles presigned URLs better
       const uploadResponse = await fetch(uploadUrl, {
         method: 'PUT',
         body: file,
         headers: {
-          'Content-Type': contentType
+          'Content-Type': contentType || file.type
         }
       });
 
@@ -238,8 +214,8 @@ function StoreLocator() {
 
       console.log("S3 upload successful:", uploadResponse.status);
       
-      // Return fileUrl
-      return fileUrl || uploadUrl.split('?')[0]; // Fallback to uploadUrl without query params
+      // Return fileUrl for next step
+      return { fileUrl };
       
     } catch (err) {
       console.error("Error uploading file:", err);
@@ -247,12 +223,15 @@ function StoreLocator() {
       if (err.response) {
         console.error("Response status:", err.response.status);
         console.error("Response data:", err.response.data);
+        console.error("Response headers:", err.response.headers);
       }
       
       if (err.response?.status === 403) {
         throw new Error("Access denied. Please check your permissions or try again.");
       } else if (err.response?.status === 400) {
         throw new Error("Invalid file or request. Please check your file format.");
+      } else if (err.code === 'ECONNABORTED') {
+        throw new Error("Upload timeout. Please try again with a smaller file.");
       } else {
         throw new Error(`Upload failed: ${err.message}`);
       }
@@ -274,7 +253,7 @@ function StoreLocator() {
       
       try {
         // Upload to S3 using presigned URL
-        const fileUrl = await uploadFileToS3(file, formData.storename);
+        const { fileUrl } = await uploadFileToS3(file);
         console.log("Image uploaded successfully:", fileUrl);
         
         // Update form data with the S3 URL
@@ -289,6 +268,17 @@ function StoreLocator() {
         // Reset file input
         e.target.value = '';
       }
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    setFormData({ ...formData, image_url: '' });
+    // Reset file input
+    const fileInput = document.querySelector('input[type="file"]');
+    if (fileInput) {
+      fileInput.value = '';
     }
   };
 
@@ -597,7 +587,7 @@ function StoreLocator() {
                     </div>
                   )}
                   {imagePreview && !uploading && (
-                    <div style={{ marginTop: '1rem' }}>
+                    <div style={{ marginTop: '1rem', position: 'relative', display: 'inline-block' }}>
                       <img 
                         src={imagePreview} 
                         alt="Store preview" 
@@ -606,9 +596,41 @@ function StoreLocator() {
                           maxHeight: '200px', 
                           borderRadius: '8px',
                           border: '2px solid #e9ecef',
-                          objectFit: 'cover'
+                          objectFit: 'cover',
+                          display: 'block'
                         }} 
                       />
+                      <button
+                        onClick={handleRemoveImage}
+                        style={{
+                          position: 'absolute',
+                          top: '8px',
+                          right: '8px',
+                          background: '#ED1B24',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: '28px',
+                          height: '28px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
+                          transition: 'all 0.3s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.transform = 'scale(1.1)';
+                          e.target.style.background = '#c4161f';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.transform = 'scale(1)';
+                          e.target.style.background = '#ED1B24';
+                        }}
+                        title="Remove image"
+                      >
+                        <X size={16} />
+                      </button>
                       {formData.image_url && (
                         <p style={{ marginTop: '0.5rem', color: '#28a745', fontSize: '0.875rem' }}>
                           ✓ Image uploaded successfully

@@ -272,11 +272,16 @@
   font-size: 14px;
 }
 
+.export-dropdown-container {
+  position: relative;
+}
+
 .export-button{
   display: flex;
   flex-direction: row;
   justify-content: center;
   align-items: center;
+  gap: 8px;
   background-color: black;
   color: white;
   height: fit-content;
@@ -285,6 +290,52 @@
   border: none;
   border-radius: 0.5rem;
   cursor: pointer;
+}
+
+.dropdown-arrow {
+  font-size: 0.8em;
+  margin-left: 5px;
+}
+
+.export-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 280px;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.export-dropdown-item {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333;
+  border-bottom: 1px solid #eee;
+  transition: background-color 0.2s;
+}
+
+.export-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.export-dropdown-item:hover {
+  background-color: #f5f5f5;
+}
+
+.export-dropdown-item:first-child {
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+.export-dropdown-item:last-child {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
 }
 
 @media (max-width: 768px) {
@@ -323,5 +374,20 @@
 
   .cart-item-image {
     align-self: center;
+  }
+
+  .export-button {
+    font-size: 14px;
+    padding: 8px 12px;
+  }
+
+  .export-dropdown-menu {
+    min-width: 240px;
+    right: 0;
+  }
+
+  .export-dropdown-item {
+    font-size: 13px;
+    padding: 10px 14px;
   }
 }

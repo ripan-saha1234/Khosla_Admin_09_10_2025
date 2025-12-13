@@ -4,7 +4,7 @@ import axios from "axios";
 import { Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField } from "@mui/material";
 
 function ExtraBannerManagement() {
-  const [banners, setBanners] = useState([null, null, null, null, null, null, null]); // 7 slots
+  const [banners, setBanners] = useState([null, null, null, null, null, null, null, null, null]); // 9 slots
   const [editingBannerIndex, setEditingBannerIndex] = useState(null);
   const [editBannerImage, setEditBannerImage] = useState(null);
   const [editBannerPreview, setEditBannerPreview] = useState("");
@@ -14,7 +14,7 @@ function ExtraBannerManagement() {
   const [editFormData, setEditFormData] = useState({ description: "", redirecturl: "", text: "" });
   const [updating, setUpdating] = useState(false);
   const [deleting, setDeleting] = useState(null);
-  const fileInputRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
+  const fileInputRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
 
   const baseUrl = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev";
   const tableType = "extrabanners"; 
@@ -37,16 +37,16 @@ function ExtraBannerManagement() {
       
       const bannersData = response.data.data || response.data || [];
       
-      // Initialize banners array with 7 slots, sorted by position
-      const bannersArray = [null, null, null, null, null, null, null];
+      // Initialize banners array with 9 slots, sorted by position
+      const bannersArray = [null, null, null, null, null, null, null, null, null];
       
       // Fill in existing banners by position
       bannersData.forEach((banner) => {
-        // New API uses position (1-7), old API uses index
+        // New API uses position (1-9), old API uses index
         const position = banner.position || banner.index || 0;
-        const arrayIndex = position - 1; // Convert position (1-7) to array index (0-6)
+        const arrayIndex = position - 1; // Convert position (1-9) to array index (0-8)
         
-        if (arrayIndex >= 0 && arrayIndex < 7) {
+        if (arrayIndex >= 0 && arrayIndex < 9) {
           bannersArray[arrayIndex] = banner;
         }
       });
@@ -56,7 +56,7 @@ function ExtraBannerManagement() {
     } catch (error) {
       console.error("Error fetching extra banners from database:", error);
       // Set empty array on error
-      setBanners([null, null, null, null, null, null, null]);
+      setBanners([null, null, null, null, null, null, null, null, null]);
     }
   };
 
@@ -65,12 +65,15 @@ function ExtraBannerManagement() {
     try {
       console.log("Upserting banner:", { position, fileUrl, description, redirecturl, text });
       
+      // Ensure position is a number
+      const positionNum = typeof position === 'string' ? parseInt(position, 10) : position;
+      
       const response = await axios.post(`${baseUrl}/banners/upsert`, {
-        position,
+        position: positionNum,
         imageurl: fileUrl,
-        description,
-        redirecturl,
-        text
+        description: description || "",
+        redirecturl: redirecturl || "",
+        text: text || ""
       });
       
       console.log("Banner upserted:", response.data);
@@ -78,7 +81,19 @@ function ExtraBannerManagement() {
       
     } catch (error) {
       console.error("Error upserting banner:", error);
-      throw new Error(`Failed to upsert banner: ${error.message}`);
+      console.error("Error response:", error.response?.data);
+      console.error("Error status:", error.response?.status);
+      
+      // Provide more detailed error message
+      let errorMessage = `Failed to upsert banner: ${error.message}`;
+      if (error.response?.data) {
+        errorMessage += ` - ${JSON.stringify(error.response.data)}`;
+      }
+      if (error.response?.status === 500) {
+        errorMessage += ` - Server error. The backend may not support position ${position} yet. Please check if positions 8 and 9 are supported.`;
+      }
+      
+      throw new Error(errorMessage);
     }
   };
 
@@ -87,11 +102,14 @@ function ExtraBannerManagement() {
     try {
       console.log("Updating banner:", { position, imageurl, description, redirecturl, text });
       
-      const response = await axios.put(`${baseUrl}/banners/${position}`, {
-        imageurl,
-        description,
-        redirecturl,
-        text
+      // Ensure position is a number
+      const positionNum = typeof position === 'string' ? parseInt(position, 10) : position;
+      
+      const response = await axios.put(`${baseUrl}/banners/${positionNum}`, {
+        imageurl: imageurl || "",
+        description: description || "",
+        redirecturl: redirecturl || "",
+        text: text || ""
       });
       
       console.log("Banner updated:", response.data);
@@ -99,7 +117,19 @@ function ExtraBannerManagement() {
       
     } catch (error) {
       console.error("Error updating banner:", error);
-      throw new Error(`Failed to update banner: ${error.message}`);
+      console.error("Error response:", error.response?.data);
+      console.error("Error status:", error.response?.status);
+      
+      // Provide more detailed error message
+      let errorMessage = `Failed to update banner: ${error.message}`;
+      if (error.response?.data) {
+        errorMessage += ` - ${JSON.stringify(error.response.data)}`;
+      }
+      if (error.response?.status === 500) {
+        errorMessage += ` - Server error. The backend may not support position ${position} yet. Please check if positions 8 and 9 are supported.`;
+      }
+      
+      throw new Error(errorMessage);
     }
   };
 
@@ -108,14 +138,29 @@ function ExtraBannerManagement() {
     try {
       console.log("Deleting banner at position:", position);
       
-      const response = await axios.delete(`${baseUrl}/banners/${position}`);
+      // Ensure position is a number
+      const positionNum = typeof position === 'string' ? parseInt(position, 10) : position;
+      
+      const response = await axios.delete(`${baseUrl}/banners/${positionNum}`);
       
       console.log("Banner deleted:", response.data);
       return response.data;
       
     } catch (error) {
       console.error("Error deleting banner:", error);
-      throw new Error(`Failed to delete banner: ${error.message}`);
+      console.error("Error response:", error.response?.data);
+      console.error("Error status:", error.response?.status);
+      
+      // Provide more detailed error message
+      let errorMessage = `Failed to delete banner: ${error.message}`;
+      if (error.response?.data) {
+        errorMessage += ` - ${JSON.stringify(error.response.data)}`;
+      }
+      if (error.response?.status === 500) {
+        errorMessage += ` - Server error. The backend may not support position ${position} yet.`;
+      }
+      
+      throw new Error(errorMessage);
     }
   };
 
@@ -315,12 +360,12 @@ function ExtraBannerManagement() {
       <h1 className="banners-page-header">EXTRA BANNER MANAGEMENT</h1>
 
       <div className="banners-page-subheader">
-        <h2>EXTRA BANNERS (7 Slots)</h2>
+        <h2>EXTRA BANNERS (9 Slots)</h2>
       </div>
 
-      {/* Banner Display - 7 Fixed Slots */}
+      {/* Banner Display - 9 Fixed Slots */}
       <div className="banners-page-top-banners-container" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "20px" }}>
-        {[0, 1, 2, 3, 4, 5, 6].map((index) => {
+        {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((index) => {
           const banner = banners[index];
           // Handle both new API format (imageurl) and old format (largeImageURL, url)
           const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;

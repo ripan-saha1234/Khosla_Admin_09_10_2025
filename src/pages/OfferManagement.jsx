@@ -10,6 +10,7 @@ function OfferManagement() {
   const [tempButtonText, setTempButtonText] = useState("");
   const [products, setProducts] = useState([]);
   const [selectedProducts, setSelectedProducts] = useState(new Set());
+  const [hotDealsUpdating, setHotDealsUpdating] = useState({});
   const [loading, setLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(20);
@@ -55,6 +56,7 @@ function OfferManagement() {
           inStock: product.In_stock,
           categories: product.Categories ? product.Categories.split(',').map(cat => cat.trim()) : [],
           brand: product.Brands,
+          isHotDeals: String(product?.is_hotdeals || product?.Is_hotdeals || "false") === "true",
           images: product.Images ? product.Images.split(',').map(img => {
             const trimmedImg = img.trim();
             if (trimmedImg.startsWith('/uploads')) {
@@ -247,6 +249,40 @@ function OfferManagement() {
   // Handle deselect all products
   const handleDeselectAll = () => {
     setSelectedProducts(new Set());
+  };
+
+  // Toggle hot deals flag for a product
+  const handleHotDealsToggle = async (product, checked) => {
+    const model = product?.model || product?.Model;
+    if (!model) {
+      alert("Missing product model. Please try again.");
+      return;
+    }
+
+    setHotDealsUpdating((prev) => ({ ...prev, [product.id]: true }));
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/products/${model}/hotdeals`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_hotdeals: checked ? "true" : "false" })
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update hot deals status");
+      }
+
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === product.id ? { ...p, isHotDeals: checked } : p
+        )
+      );
+    } catch (error) {
+      console.error("Error updating hot deals:", error);
+      alert("Could not update hot deals status. Please try again.");
+    } finally {
+      setHotDealsUpdating((prev) => ({ ...prev, [product.id]: false }));
+    }
   };
 
   // Pagination handlers
@@ -495,7 +531,7 @@ function OfferManagement() {
                   alignItems: "center",
                   gap: "15px"
                 }}>
-                  <Checkbox
+                  {/* <Checkbox
                     checked={isSelected}
                     onChange={() => handleProductToggle(product.id)}
                     sx={{
@@ -507,7 +543,7 @@ function OfferManagement() {
                         fontSize: 28
                       }
                     }}
-                  />
+                  /> */}
                   <img 
                     src={product?.images[0] || 'https://via.placeholder.com/150'} 
                     alt={product?.name}
@@ -578,6 +614,24 @@ function OfferManagement() {
                   }}>
                     {product?.inStock === "1" ? '✓ In Stock' : '✗ Out of Stock'}
                   </p>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: "150px" }}>
+                  <Checkbox
+                    checked={!!product?.isHotDeals}
+                    disabled={hotDealsUpdating[product.id]}
+                    onChange={(e) => handleHotDealsToggle(product, e.target.checked)}
+                    sx={{
+                      color: "#ED1B24",
+                      '&.Mui-checked': { color: "#ED1B24" },
+                      padding: "4px"
+                    }}
+                  />
+                  <span style={{ fontSize: "0.95rem", fontWeight: "600" }}>
+                    Hot Deals
+                  </span>
+                  {hotDealsUpdating[product.id] && (
+                    <CircularProgress size={18} sx={{ color: "#ED1B24" }} />
+                  )}
                 </div>
               </div>
             </div>
