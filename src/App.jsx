@@ -14,6 +14,7 @@ import StoreLocator from './pages/StoreLocator'
 import ExtraBannerManagement from './pages/ExtraBannerManagement'
 import YoutubeVideo from './pages/YoutubeVideo'
 import OfferManagement from './pages/OfferManagement'
+import AbandonmentCart from './pages/AbdonmentCart'
 
 function App() {
   const { isAuthenticated } = useContext(Context);
@@ -38,6 +39,7 @@ function App() {
           <Route path='extra-banner-management' element={<ExtraBannerManagement />} />
           <Route path='youtube-video' element={<YoutubeVideo />} />
           <Route path='offer-management' element={<OfferManagement />} />
+          <Route path='abandonment-cart' element={<AbandonmentCart />} />
         </Route>
         
         <Route path="*" element={<Navigate to={isAuthenticated ? "/admin-panel/dashboard" : "/login"} />} />

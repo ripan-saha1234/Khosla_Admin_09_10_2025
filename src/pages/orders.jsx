@@ -27,17 +27,26 @@ function Orders() {
     const fetchingOrders = async () => {
       const orders = await fetchOrders();
       const parsedOrders = parseOrderAttributes(orders);
-      setOrders(parsedOrders);
-      setFilteredOrders(parsedOrders);
+      // Filter out "Order initiated" status orders
+      const nonInitiatedOrders = parsedOrders.filter(order => 
+        !order.order_status || order.order_status.toLowerCase() !== "order initiated"
+      );
+      setOrders(nonInitiatedOrders);
+      setFilteredOrders(nonInitiatedOrders);
     };
     fetchingOrders();
   }, []);
 
   useEffect(() => {
+    // Always exclude "Order initiated" orders
+    const nonInitiatedOrders = orders.filter(order => 
+      !order.order_status || order.order_status.toLowerCase() !== "order initiated"
+    );
+    
     if (searchTerm === "") {
-      setFilteredOrders(orders);
+      setFilteredOrders(nonInitiatedOrders);
     } else {
-      const filtered = orders.filter(order => {
+      const filtered = nonInitiatedOrders.filter(order => {
         if (searchType === "phone_no") {
           return order.phone_no.toLowerCase().includes(searchTerm.toLowerCase());
         } else {
@@ -123,15 +132,27 @@ function Orders() {
         const updatedOrders2 = orders.map(order =>
           order.order_id === orderId ? { ...order, order_status: newStatus } : order
         );
-        setOrders(updatedOrders2);
-        setFilteredOrders(updatedOrders2.filter(order => {
-          if (searchTerm === "") return true;
-          if (searchType === "phone_no") {
-            return order.phone_no.toLowerCase().includes(searchTerm.toLowerCase());
-          } else {
-            return order.order_id.toLowerCase().includes(searchTerm.toLowerCase());
-          }
-        }));
+        
+        // Filter out "Order initiated" orders
+        const nonInitiatedOrders = updatedOrders2.filter(order => 
+          !order.order_status || order.order_status.toLowerCase() !== "order initiated"
+        );
+        
+        setOrders(nonInitiatedOrders);
+        
+        // Apply search filter if any
+        if (searchTerm === "") {
+          setFilteredOrders(nonInitiatedOrders);
+        } else {
+          const filtered = nonInitiatedOrders.filter(order => {
+            if (searchType === "phone_no") {
+              return order.phone_no.toLowerCase().includes(searchTerm.toLowerCase());
+            } else {
+              return order.order_id.toLowerCase().includes(searchTerm.toLowerCase());
+            }
+          });
+          setFilteredOrders(filtered);
+        }
       }
     } catch (error) {
       console.error("Error updating status:", error);
