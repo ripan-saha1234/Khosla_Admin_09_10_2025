@@ -597,7 +597,6 @@ function Products() {
           Shipping_class: "standard",
           Images: newProduct.images?.join(", ") || "",
           Brands: newProduct.brand || "",
-          Specification: newProduct.specification || "",
           Attribute_1_name: "",
           Attribute_1_value: "",
           Attribute_1_visible: "1",
@@ -618,39 +617,6 @@ function Products() {
         
         const updatedProduct = await response.json();
         console.log("Product updated:", updatedProduct);
-        
-        // Also update the specification in the specifications API if specification is provided
-        if (newProduct.specification && newProduct.specification.trim() !== "" && productModel) {
-          try {
-            const specResponse = await fetch(`${API_BASE_URL}/specifications/${productModel}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                Model_no: productModel,
-                Specification: newProduct.specification
-              })
-            });
-            
-            if (!specResponse.ok) {
-              // If specification doesn't exist, create it
-              const createResponse = await fetch(`${API_BASE_URL}/specifications`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  Model_no: productModel,
-                  Specification: newProduct.specification
-                })
-              });
-              
-              if (!createResponse.ok) {
-                console.warn("Failed to sync specification to specifications API");
-              }
-            }
-          } catch (specError) {
-            console.warn("Error syncing specification:", specError);
-            // Don't fail the product update if specification sync fails
-          }
-        }
         
         alert("Product updated successfully!");
         
@@ -700,7 +666,6 @@ function Products() {
           Shipping_class: "standard",
           Images: newProduct.images?.join(", ") || "",
           Brands: newProduct.brand || "",
-          Specification: newProduct.specification || "",
           Attribute_1_name: "",
           Attribute_1_value: "",
           Attribute_1_visible: "1",
@@ -1152,7 +1117,6 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, A
   const [regularPrice, setRegularPrice] = useState(product ? product?.regularPrice : "");
   const [categories, setCategories] = useState(product && product?.categories ? product?.categories?.join(", ") : "");
   const [brand, setBrand] = useState(product ? product?.brand : "");
-  const [specification, setSpecification] = useState(product ? product?.specification || "" : "");
   const [images, setImages] = useState(product && product?.images ? product?.images?.join(", ") : "");
   const [currentUrl, setCurrentUrl] = useState(product ? product?.images[0] : "");
 
@@ -1363,7 +1327,6 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, A
       regularPrice,
       categories: categories?.split(",").map((cat) => cat?.trim()).filter(Boolean),
       brand,
-      specification,
       images: showImageUpload && apiReturnedImageUrls.length > 0
         ? apiReturnedImageUrls  // Use S3 uploaded URLs from API
         : images?.split(",").map((img) => img?.trim()).filter(Boolean), // Use existing URL images
@@ -1466,59 +1429,6 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, A
           value={brand}
           onChange={(e) => setBrand(e.target.value)}
         />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px' }}>
-          <TextField
-            margin="normal"
-            label="Specification"
-            fullWidth
-            multiline
-            rows={4}
-            value={specification}
-            onChange={(e) => setSpecification(e.target.value)}
-            style={{ flex: 1 }}
-          />
-          {product && product.specification && product.specification.trim() !== "" && (
-            <Button
-              variant="contained"
-              color="error"
-              onClick={async () => {
-                if (window.confirm("Are you sure you want to delete this specification?")) {
-                  try {
-                    const productModel = product.model || model;
-                    const response = await fetch(`${API_BASE_URL}/specifications/${productModel}`, {
-                      method: 'DELETE',
-                      headers: { 'Content-Type': 'application/json' }
-                    });
-                    
-                    if (!response.ok) {
-                      throw new Error("Failed to delete specification");
-                    }
-                    
-                    alert("Specification deleted successfully!");
-                    setSpecification("");
-                    
-                    // Refresh products
-                    if (onRefresh) {
-                      onRefresh();
-                    }
-                  } catch (error) {
-                    console.error("Error deleting specification:", error);
-                    alert("Failed to delete specification. Please try again.");
-                  }
-                }
-              }}
-              sx={{ 
-                backgroundColor: '#dc3545',
-                '&:hover': { backgroundColor: '#c82333' },
-                minWidth: '120px',
-                height: '40px',
-                marginTop: '16px'
-              }}
-            >
-              Delete Spec
-            </Button>
-          )}
-        </div>
         
         {/* Commented out for image upload feature */}
         {/* <TextField
