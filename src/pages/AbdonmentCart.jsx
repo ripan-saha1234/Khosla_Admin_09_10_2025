@@ -212,9 +212,9 @@ function AbdonmentCart() {
             className="search-input"
           />
         </div>
-        <div>
+        {/* <div>
           <h2>Order Initiated Status Orders</h2>
-        </div>
+        </div> */}
       </div>
 
       {/* Orders List */}
@@ -235,15 +235,15 @@ function AbdonmentCart() {
                     <p>{order.order_id}</p>
                     <p>Total : ₹{calculateTotalPrice(order.cart)}</p>
                     <p>{formatDateTime(order.created_at)}</p>
-                    <div
+                    {/* <div    
                       className="order-status-badge"
                       style={getStatusColor(order.order_status)}
                     >
                       {order.order_status}
-                    </div>
+                    </div> */}
                   </div>
                   <div className="orders-page-order-item-controls">
-                    <select
+                    {/* <select
                       className="status-select"
                       onChange={(e) => handleStatusChange(order.order_id, order.phone_no, e.target.value)}
                       defaultValue=""
@@ -256,7 +256,7 @@ function AbdonmentCart() {
                       <option value="Refund processing">Refund processing</option>
                       <option value="Refund successfully">Refund successfully</option>
                       <option value="Order unsuccessful">Order unsuccessful</option>
-                    </select>
+                    </select> */}
                     <button
                       className="view-button"
                       onClick={() => handleViewOrder(order)}

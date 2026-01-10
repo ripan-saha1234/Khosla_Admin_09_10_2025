@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Edit2, Check, X } from "lucide-react";
+import { Edit2, Check, X, Search } from "lucide-react";
 import axios from "axios";
 import { Checkbox, CircularProgress } from "@mui/material";
 import "../css/products.css";
@@ -20,6 +20,8 @@ function OfferManagement() {
   const [buttonColor, setButtonColor] = useState("blue");
   const [buttonStatus, setButtonStatus] = useState("active");
   const [buttonLoading, setButtonLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isSearchMode, setIsSearchMode] = useState(false);
   
   const API_BASE_URL = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev";
 
@@ -34,6 +36,95 @@ function OfferManagement() {
     };
     return colorMap[color?.toLowerCase()] || colorMap["blue"];
   };
+
+  // Fetch search results
+  async function fetchSearchResults() {
+    setLoading(true);
+    try {
+      // Search by model using API endpoint
+      const res = await fetch(`${API_BASE_URL}/products/${searchTerm}`);
+      
+      console.log('=== Search API Response ===');
+      console.log('Search term (model):', searchTerm);
+      console.log('Search URL:', `${API_BASE_URL}/products/${searchTerm}`);
+      
+      if (!res.ok) {
+        if (res.status === 404) {
+          console.log('Product not found');
+          setProducts([]);
+          setLoading(false);
+          return;
+        }
+        throw new Error("Failed to search product");
+      }
+      
+      const data = await res.json();
+      console.log('Search Response:', data);
+      console.log('==========================');
+      
+      // Check if single product or array of products is returned
+      let productsArray = [];
+      
+      if (Array.isArray(data)) {
+        productsArray = data;
+      } else if (data.product) {
+        productsArray = [data.product];
+      } else if (data.products) {
+        productsArray = data.products;
+      } else {
+        // If single product object is returned directly
+        productsArray = [data];
+      }
+      
+      // Transform products
+      const transformedProducts = productsArray.map(product => ({
+        id: product.PID,
+        name: product.Name,
+        regularPrice: product.Regular_price,
+        salePrice: product.Sale_price,
+        type: product.Type,
+        model: product.Model,
+        shortDesc: product.Short_description,
+        description: product.Description,
+        inStock: product.In_stock,
+        categories: product.Categories ? product.Categories.split(',').map(cat => cat.trim()) : [],
+        brand: product.Brands,
+        isHotDeals: String(product?.is_hotdeals || product?.Is_hotdeals || "false") === "true",
+        images: product.Images ? product.Images.split(',').map(img => {
+          const trimmedImg = img.trim();
+          if (trimmedImg.startsWith('/uploads')) {
+            return `https://khoslaslider.s3.ap-south-1.amazonaws.com${trimmedImg}`;
+          }
+          return trimmedImg;
+        }) : []
+      }));
+
+      setProducts(transformedProducts);
+    } catch (error) {
+      console.error("Error fetching search results:", error);
+      alert('Failed to search product. Please try again.');
+      setProducts([]);
+    }
+    setLoading(false);
+  }
+
+  // Handle search
+  function handleSearch() {
+    if (searchTerm.trim() !== "") {
+      // Enter search mode
+      setIsSearchMode(true);
+      setCurrentPage(1); // Reset to first page when searching
+      // Clear current list before search
+      setProducts([]);
+      fetchSearchResults();
+    } else {
+      // If search term is empty, exit search mode and reset product list with pagination
+      setIsSearchMode(false);
+      setProducts([]);
+      setCurrentPage(1);
+      fetchProducts();
+    }
+  }
 
   // Fetch products from API
   async function fetchProducts(pageNum = 1) {
@@ -305,14 +396,37 @@ function OfferManagement() {
   };
 
   useEffect(() => {
-    fetchProducts();
+    if (!isSearchMode) {
+      fetchProducts();
+    }
     initializeButton();
-  }, []);
+  }, [isSearchMode]);
 
   return (
     <div className="products-page-product-container">
       <div className="products-page-product-container-header">
-        <h1>OFFER MANAGEMENT</h1>
+        <h1>OFFER MANAGEMENT ({totalProducts})</h1>
+        <div className="products-page-product-search-add-container">
+          <div className="products-page-product-search">
+            <input 
+              type="text" 
+              placeholder="Search by model" 
+              value={searchTerm} 
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                // Auto-reset when search is cleared
+                if (e.target.value.trim() === "" && isSearchMode) {
+                  setIsSearchMode(false);
+                  setProducts([]);
+                  setCurrentPage(1);
+                  fetchProducts();
+                }
+              }}
+              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+            />
+            <button onClick={handleSearch}><Search size={24} color="white" /></button>
+          </div>
+        </div>
       </div>
 
       {/* Button Text Editor Section */}
@@ -640,7 +754,11 @@ function OfferManagement() {
         
         {!loading && products.length === 0 && (
           <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-            <p>No products found. Please add products first.</p>
+            <p>No products found. {
+              isSearchMode 
+                ? 'Try a different search term.' 
+                : 'Please add products first.'
+            }</p>
           </div>
         )}
       </div>
@@ -652,7 +770,7 @@ function OfferManagement() {
       )}
 
       {/* Pagination */}
-      {!loading && totalPages > 1 && (
+      {!loading && !isSearchMode && totalPages > 1 && (
         <div className="pagination-container">
           <div className="pagination-info">
             Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, totalProducts)} of {totalProducts} products

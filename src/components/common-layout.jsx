@@ -78,6 +78,10 @@ function CommonLayout() {
             setLinkSelected("abandonment-cart");
             navigate("/admin-panel/abandonment-cart");
           }}>Abandonment Cart</button>
+          <button className={linkSelected === "seo-management"?"selected":""} onClick={()=>{
+            setLinkSelected("seo-management");
+            navigate("/admin-panel/seo-management");
+          }}>SEO Management</button>
           {/* <button className={linkSelected === "user-management"?"selected":""} onClick={()=>{
             setLinkSelected("user-management");
             navigate("/admin-panel/user-management");
