@@ -82,6 +82,10 @@ function CommonLayout() {
             setLinkSelected("seo-management");
             navigate("/admin-panel/seo-management");
           }}>SEO Management</button>
+          <button className={linkSelected === "contact-enquiries"?"selected":""} onClick={()=>{
+            setLinkSelected("contact-enquiries");
+            navigate("/admin-panel/contact-enquiries");
+          }}>Contact Enquiries</button>
           {/* <button className={linkSelected === "user-management"?"selected":""} onClick={()=>{
             setLinkSelected("user-management");
             navigate("/admin-panel/user-management");

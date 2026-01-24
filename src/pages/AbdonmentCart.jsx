@@ -290,17 +290,17 @@ function AbdonmentCart() {
               <div className="order-info-section">
                 <h3>Order Information</h3>
                 <div className="info-grid">
-                  <div><strong>Order ID:</strong> {selectedOrder.order_id}</div>
+                  {/* <div><strong>Order ID:</strong> {selectedOrder.order_id}</div> */}
                   <div><strong>Phone Number:</strong> {selectedOrder.phone_no}</div>
                   <div><strong>Created At:</strong> {formatDateTime(selectedOrder.created_at)}</div>
-                  <div><strong>Status:</strong>
+                  {/* <div><strong>Status:</strong>
                     <span
                       className="status-inline"
                       style={getStatusColor(selectedOrder.order_status)}
                     >
                       {selectedOrder.order_status}
                     </span>
-                  </div>
+                  </div> */}
                   {selectedOrder.order_notes && (
                     <div><strong>Notes:</strong> {selectedOrder.order_notes}</div>
                   )}
@@ -308,7 +308,7 @@ function AbdonmentCart() {
               </div>
 
               {/* Billing Address */}
-              <div className="address-section">
+              {/* <div className="address-section">
                 <h3>Billing Address</h3>
                 <div className="address-details">
                   <p><strong>Name:</strong> {selectedOrder.billing_address?.first_name} {selectedOrder.billing_address?.last_name}</p>
@@ -326,10 +326,10 @@ function AbdonmentCart() {
                   <p><strong>Pincode:</strong> {selectedOrder.billing_address?.pincode}</p>
                   <p><strong>Country:</strong> {selectedOrder.billing_address?.country_region}</p>
                 </div>
-              </div>
+              </div> */}
 
               {/* Shipping Address */}
-              <div className="address-section">
+              {/* <div className="address-section">
                 <h3>Shipping Address</h3>
                 <div className="address-details">
                   <p><strong>Name:</strong> {selectedOrder.shipping_address?.first_name} {selectedOrder.shipping_address?.last_name}</p>
@@ -342,7 +342,7 @@ function AbdonmentCart() {
                   <p><strong>Pincode:</strong> {selectedOrder.shipping_address?.pincode}</p>
                   <p><strong>Country:</strong> {selectedOrder.shipping_address?.country_region}</p>
                 </div>
-              </div>
+              </div> */}
 
               {/* Cart Items */}
               <div className="cart-section">

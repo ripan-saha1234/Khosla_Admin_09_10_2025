@@ -16,6 +16,7 @@ import YoutubeVideo from './pages/YoutubeVideo'
 import OfferManagement from './pages/OfferManagement'
 import AbandonmentCart from './pages/AbdonmentCart'
 import SEOManagement from './pages/SEOManagement'
+import ContactEnquiries from './pages/ContactEnquiries'
 
 function App() {
   const { isAuthenticated } = useContext(Context);
@@ -42,6 +43,7 @@ function App() {
           <Route path='offer-management' element={<OfferManagement />} />
           <Route path='abandonment-cart' element={<AbandonmentCart />} />
           <Route path='seo-management' element={<SEOManagement />} />
+          <Route path='contact-enquiries' element={<ContactEnquiries />} />
         </Route>
         
         <Route path="*" element={<Navigate to={isAuthenticated ? "/admin-panel/dashboard" : "/login"} />} />
