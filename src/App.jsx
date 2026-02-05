@@ -17,6 +17,7 @@ import OfferManagement from './pages/OfferManagement'
 import AbandonmentCart from './pages/AbdonmentCart'
 import SEOManagement from './pages/SEOManagement'
 import ContactEnquiries from './pages/ContactEnquiries'
+import StatsManagement from './pages/StatsManagement'
 
 function App() {
   const { isAuthenticated } = useContext(Context);
@@ -44,6 +45,7 @@ function App() {
           <Route path='abandonment-cart' element={<AbandonmentCart />} />
           <Route path='seo-management' element={<SEOManagement />} />
           <Route path='contact-enquiries' element={<ContactEnquiries />} />
+          <Route path='stats-management' element={<StatsManagement />}/>
         </Route>
         
         <Route path="*" element={<Navigate to={isAuthenticated ? "/admin-panel/dashboard" : "/login"} />} />

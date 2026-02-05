@@ -24,6 +24,8 @@ function ExtraBannerManagement() {
   const [updating, setUpdating] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [deletingSection, setDeletingSection] = useState(null); // Track which section is being deleted
+  // Per-slot redirect URL (key: "section_index", e.g. "extra_0") - used when uploading and shown in input
+  const [slotRedirectUrls, setSlotRedirectUrls] = useState({});
   const fileInputRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
   const bestSellersFileInputRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
   const entertainmentFileInputRefs = [useRef(null), useRef(null), useRef(null), useRef(null)];
@@ -35,7 +37,7 @@ function ExtraBannerManagement() {
 
   const baseUrl = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev";
   const tableType = "extrabanners";
-  
+
   // Define supported positions based on database constraints
   // Update this array based on what the backend database actually supports
   // If all positions 1-68 are supported, you can remove this validation
@@ -45,26 +47,26 @@ function ExtraBannerManagement() {
     // You can also specify exact positions if needed:
     // allowed: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68]
   };
-  
+
   // Validate position before sending to API
   const validatePosition = (position) => {
     const pos = typeof position === 'string' ? parseInt(position, 10) : position;
-    
+
     if (isNaN(pos) || pos < SUPPORTED_POSITIONS.min || pos > SUPPORTED_POSITIONS.max) {
       return {
         valid: false,
         error: `Position ${position} is not supported. Valid range is ${SUPPORTED_POSITIONS.min}-${SUPPORTED_POSITIONS.max}. Please contact backend developer to update the database constraint 'chk_position' if you need to use position ${position}.`
       };
     }
-    
+
     return { valid: true };
-  }; 
+  };
 
   // FETCH BANNERS FROM DATABASE 
   const fetchBannersFromDatabase = async () => {
     try {
       console.log("Fetching banners from database");
-      
+
       // Try new /banners endpoint first, fallback to old endpoint if needed
       let response;
       try {
@@ -75,9 +77,9 @@ function ExtraBannerManagement() {
         response = await axios.get(`${baseUrl}/slider?tableType=${tableType}`);
         console.log("Fetched from old endpoint:", response.data);
       }
-      
+
       const bannersData = response.data.data || response.data || [];
-      
+
       // Initialize arrays for all sections
       const extraBannersArray = [null, null, null, null, null, null, null, null, null]; // 9 slots (positions 1-9)
       const bestSellersArray = [null, null, null, null, null]; // 5 slots (positions 10-14)
@@ -87,11 +89,11 @@ function ExtraBannerManagement() {
       const kitchenAppliancesArray = [null, null, null, null, null, null, null, null]; // 8 slots (positions 27-34)
       const lifestyleProductsArray = [null, null, null, null]; // 4 slots (positions 35-38)
       const popularBrandsArray = Array(30).fill(null); // 30 slots (positions 39-68)
-      
+
       // Fill in existing banners by position
       bannersData.forEach((banner) => {
         const position = banner.position || banner.index || 0;
-        
+
         if (position >= 1 && position <= 9) {
           // Extra Banners section (positions 1-9)
           const arrayIndex = position - 1; // Convert position (1-9) to array index (0-8)
@@ -126,7 +128,7 @@ function ExtraBannerManagement() {
           popularBrandsArray[arrayIndex] = banner;
         }
       });
-      
+
       setBanners(extraBannersArray);
       setBestSellersBanners(bestSellersArray);
       setEntertainmentBanners(entertainmentArray);
@@ -135,7 +137,7 @@ function ExtraBannerManagement() {
       setKitchenAppliancesBanners(kitchenAppliancesArray);
       setLifestyleProductsBanners(lifestyleProductsArray);
       setPopularBrandsBanners(popularBrandsArray);
-      
+
     } catch (error) {
       console.error("Error fetching banners from database:", error);
       // Set empty arrays on error
@@ -154,16 +156,16 @@ function ExtraBannerManagement() {
   const upsertBanner = async (position, fileUrl, description = "", redirecturl = "", text = "") => {
     try {
       console.log("Upserting banner:", { position, fileUrl, description, redirecturl, text });
-      
+
       // Validate position before sending
       const validation = validatePosition(position);
       if (!validation.valid) {
         throw new Error(validation.error);
       }
-      
+
       // Ensure position is a number
       const positionNum = typeof position === 'string' ? parseInt(position, 10) : position;
-      
+
       const response = await axios.post(`${baseUrl}/banners/upsert`, {
         position: positionNum,
         imageurl: fileUrl,
@@ -171,22 +173,22 @@ function ExtraBannerManagement() {
         redirecturl: redirecturl || "",
         text: text || ""
       });
-      
+
       console.log("Banner upserted:", response.data);
       return response.data;
-      
+
     } catch (error) {
       console.error("Error upserting banner:", error);
       console.error("Error response:", error.response?.data);
       console.error("Error status:", error.response?.status);
-      
+
       // Provide more detailed error message
       let errorMessage = `Failed to upsert banner: ${error.message}`;
-      
+
       if (error.response?.data) {
         const errorData = error.response.data;
         errorMessage += ` - ${JSON.stringify(errorData)}`;
-        
+
         // Check for database constraint violation
         if (errorData.error && errorData.error.includes("chk_position")) {
           errorMessage = `Database constraint violation: Position ${position} is not allowed by the database constraint 'chk_position'. `;
@@ -194,12 +196,12 @@ function ExtraBannerManagement() {
           errorMessage += `Please contact the backend developer to update the database constraint to allow position ${position}.`;
         }
       }
-      
+
       if (error.response?.status === 500 && !errorMessage.includes("constraint")) {
         errorMessage += ` - Server error. The backend database constraint 'chk_position' may not allow position ${position}. `;
         errorMessage += `Please verify with backend developer which positions are supported (currently configured: ${SUPPORTED_POSITIONS.min}-${SUPPORTED_POSITIONS.max}).`;
       }
-      
+
       throw new Error(errorMessage);
     }
   };
@@ -208,38 +210,38 @@ function ExtraBannerManagement() {
   const updateBanner = async (position, imageurl, description, redirecturl, text) => {
     try {
       console.log("Updating banner:", { position, imageurl, description, redirecturl, text });
-      
+
       // Validate position before sending
       const validation = validatePosition(position);
       if (!validation.valid) {
         throw new Error(validation.error);
       }
-      
+
       // Ensure position is a number
       const positionNum = typeof position === 'string' ? parseInt(position, 10) : position;
-      
+
       const response = await axios.put(`${baseUrl}/banners/${positionNum}`, {
         imageurl: imageurl || "",
         description: description || "",
         redirecturl: redirecturl || "",
         text: text || ""
       });
-      
+
       console.log("Banner updated:", response.data);
       return response.data;
-      
+
     } catch (error) {
       console.error("Error updating banner:", error);
       console.error("Error response:", error.response?.data);
       console.error("Error status:", error.response?.status);
-      
+
       // Provide more detailed error message
       let errorMessage = `Failed to update banner: ${error.message}`;
-      
+
       if (error.response?.data) {
         const errorData = error.response.data;
         errorMessage += ` - ${JSON.stringify(errorData)}`;
-        
+
         // Check for database constraint violation
         if (errorData.error && errorData.error.includes("chk_position")) {
           errorMessage = `Database constraint violation: Position ${position} is not allowed by the database constraint 'chk_position'. `;
@@ -247,12 +249,12 @@ function ExtraBannerManagement() {
           errorMessage += `Please contact the backend developer to update the database constraint to allow position ${position}.`;
         }
       }
-      
+
       if (error.response?.status === 500 && !errorMessage.includes("constraint")) {
         errorMessage += ` - Server error. The backend database constraint 'chk_position' may not allow position ${position}. `;
         errorMessage += `Please verify with backend developer which positions are supported (currently configured: ${SUPPORTED_POSITIONS.min}-${SUPPORTED_POSITIONS.max}).`;
       }
-      
+
       throw new Error(errorMessage);
     }
   };
@@ -261,20 +263,20 @@ function ExtraBannerManagement() {
   const deleteBanner = async (position) => {
     try {
       console.log("Deleting banner at position:", position);
-      
+
       // Ensure position is a number
       const positionNum = typeof position === 'string' ? parseInt(position, 10) : position;
-      
+
       const response = await axios.delete(`${baseUrl}/banners/${positionNum}`);
-      
+
       console.log("Banner deleted:", response.data);
       return response.data;
-      
+
     } catch (error) {
       console.error("Error deleting banner:", error);
       console.error("Error response:", error.response?.data);
       console.error("Error status:", error.response?.status);
-      
+
       // Provide more detailed error message
       let errorMessage = `Failed to delete banner: ${error.message}`;
       if (error.response?.data) {
@@ -283,7 +285,7 @@ function ExtraBannerManagement() {
       if (error.response?.status === 500) {
         errorMessage += ` - Server error. The backend may not support position ${position} yet.`;
       }
-      
+
       throw new Error(errorMessage);
     }
   };
@@ -292,17 +294,17 @@ function ExtraBannerManagement() {
   const uploadFileToS3 = async (file) => {
     try {
       console.log("Starting upload for file:", file.name);
-      
+
       const fileExtension = file.name.split(".").pop().toLowerCase();
       console.log("File extension:", fileExtension);
-      
+
       // Step 1: Get pre-signed URL from API
       const presignRes = await axios.post(`${baseUrl}/banners/upload-url`, {
         fileExtension
       });
 
       console.log("Pre-signed URL response:", presignRes.data);
-      
+
       if (!presignRes.data || !presignRes.data.data) {
         throw new Error("Invalid response from upload-url API");
       }
@@ -314,7 +316,7 @@ function ExtraBannerManagement() {
 
       // Step 2: Upload file to S3 using pre-signed URL
       console.log("Uploading file to S3...");
-      
+
       // Use fetch for S3 upload as it handles presigned URLs better
       const uploadResponse = await fetch(uploadUrl, {
         method: 'PUT',
@@ -331,19 +333,19 @@ function ExtraBannerManagement() {
       }
 
       console.log("S3 upload successful:", uploadResponse.status);
-      
+
       // Return fileUrl for next step
       return { fileUrl };
-      
+
     } catch (err) {
       console.error("Error uploading file:", err);
-      
+
       if (err.response) {
         console.error("Response status:", err.response.status);
         console.error("Response data:", err.response.data);
         console.error("Response headers:", err.response.headers);
       }
-      
+
       if (err.response?.status === 403) {
         throw new Error("Access denied. Please check your permissions or try again.");
       } else if (err.response?.status === 400) {
@@ -360,7 +362,7 @@ function ExtraBannerManagement() {
   const handleEditBanner = (index) => {
     const banner = banners[index];
     if (!banner) return;
-    
+
     setEditingBanner({ index, position: index + 1, ...banner });
     setEditFormData({
       description: banner.description || "",
@@ -378,7 +380,7 @@ function ExtraBannerManagement() {
       setUpdating(true);
       const position = editingBanner.position;
       const imageurl = editingBanner.imageurl || editingBanner.largeImageURL || editingBanner.url || "";
-      
+
       await updateBanner(
         position,
         imageurl,
@@ -389,12 +391,17 @@ function ExtraBannerManagement() {
 
       // Refresh banners from API
       await fetchBannersFromDatabase();
-      
+
       alert("Banner updated successfully!");
       setEditDialogOpen(false);
       setEditingBanner(null);
       setEditFormData({ description: "", redirecturl: "", text: "" });
-      
+      setSlotRedirectUrls((prev) => {
+        const next = { ...prev };
+        if (editingBanner?.index !== undefined) delete next[`extra_${editingBanner.index}`];
+        return next;
+      });
+
     } catch (err) {
       console.error("Error updating banner:", err);
       alert(`Failed to update banner: ${err.message}`);
@@ -406,7 +413,7 @@ function ExtraBannerManagement() {
   // =================== HANDLE DELETE BANNER ===================
   const handleDeleteBanner = async (index, section = "extra") => {
     let banner, position;
-    
+
     if (section === "bestsellers") {
       banner = bestSellersBanners[index];
       position = index + 10; // Positions 10-14
@@ -432,11 +439,11 @@ function ExtraBannerManagement() {
       banner = banners[index];
       position = index + 1; // Positions 1-9
     }
-    
+
     if (!banner) return;
 
     const confirmDelete = window.confirm(`Are you sure you want to delete Banner ${position}? This action cannot be undone.`);
-    
+
     if (!confirmDelete) {
       return;
     }
@@ -444,14 +451,14 @@ function ExtraBannerManagement() {
     try {
       setDeleting(position);
       setDeletingSection(section);
-      
+
       await deleteBanner(position);
 
       // Refresh banners from API
       await fetchBannersFromDatabase();
-      
+
       alert("Banner deleted successfully!");
-      
+
     } catch (err) {
       console.error("Error deleting banner:", err);
       alert(`Failed to delete banner: ${err.message}`);
@@ -476,7 +483,7 @@ function ExtraBannerManagement() {
 
       // Step 3: Upsert banner with position, imageurl, and default metadata
       let position, currentBanner;
-      
+
       if (section === "bestsellers") {
         position = index + 10; // Positions 10-14
         currentBanner = bestSellersBanners[index];
@@ -502,19 +509,20 @@ function ExtraBannerManagement() {
         position = index + 1; // Positions 1-9
         currentBanner = banners[index];
       }
-      
-      // Use existing banner metadata if available, otherwise use defaults
+
+      // Use slot input value first, then existing banner metadata, then empty
+      const slotKey = `${section}_${index}`;
       const description = currentBanner?.description || "";
-      const redirecturl = currentBanner?.redirecturl || "";
+      const redirecturl = (slotRedirectUrls[slotKey] !== undefined ? slotRedirectUrls[slotKey] : (currentBanner?.redirecturl || "")) || "";
       const text = currentBanner?.text || "";
 
       await upsertBanner(position, uploadResult.fileUrl, description, redirecturl, text);
 
       // Refresh banners from API
       await fetchBannersFromDatabase();
-      
+
       alert("Banner updated successfully!");
-      
+
     } catch (err) {
       console.error("Error updating banner:", err);
       alert(`Failed to update banner: ${err.message}`);
@@ -569,15 +577,15 @@ function ExtraBannerManagement() {
       <h1 className="banners-page-header">EXTRA BANNER MANAGEMENT</h1>
 
       {/* Section Selector Dropdown */}
-      <div style={{ 
-        marginBottom: "20px", 
+      <div style={{
+        marginBottom: "20px",
         padding: "15px 0",
         borderBottom: "1px solid #e0e0e0"
       }}>
-        <label style={{ 
-          marginRight: "10px", 
-          fontSize: "16px", 
-          fontWeight: "600" 
+        <label style={{
+          marginRight: "10px",
+          fontSize: "16px",
+          fontWeight: "600"
         }}>
           Select Section:
         </label>
@@ -613,125 +621,121 @@ function ExtraBannerManagement() {
             <h2>EXTRA BANNERS (9 Slots)</h2>
           </div>
 
-      {/* Banner Display - 9 Fixed Slots */}
-      <div className="banners-page-top-banners-container" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "20px" }}>
-        {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((index) => {
-          const banner = banners[index];
-          // Handle both new API format (imageurl) and old format (largeImageURL, url)
-          const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
-          const bannerId = banner?.id || banner?.sliderId;
-          
-          return (
-            <div key={index} className="banners-page-banner-container" style={{ position: "relative", minHeight: "200px" }}>
-              {imageUrl ? (
-                <img 
-                  src={imageUrl} 
-                  alt={`Extra Banner ${index + 1}`}
-                  style={{ width: "100%", height: "auto", display: "block" }}
-                  onError={(e) => {
-                    console.error(`Failed to load image: ${imageUrl}`);
-                    e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
-                  }}
-                />
-              ) : (
-                <div style={{ 
-                  width: "100%", 
-                  height: "200px", 
-                  backgroundColor: "#f5f5f5", 
-                  display: "flex", 
-                  alignItems: "center", 
-                  justifyContent: "center",
-                  border: "2px dashed #ddd"
-                }}>
-                  <p style={{ color: "#999" }}>No Banner</p>
+          {/* Banner Display - 9 Fixed Slots */}
+          <div className="banners-page-top-banners-container" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "20px" }}>
+            {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((index) => {
+              const banner = banners[index];
+              // Handle both new API format (imageurl) and old format (largeImageURL, url)
+              const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
+              const bannerId = banner?.id || banner?.sliderId;
+
+              return (
+                <div key={index} className="banners-page-banner-container" style={{ position: "relative", minHeight: "200px" }}>
+                  <div style={{ position: "relative" }}>
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt={`Extra Banner ${index + 1}`}
+                        style={{ width: "100%", height: "auto", display: "block" }}
+                        onError={(e) => {
+                          console.error(`Failed to load image: ${imageUrl}`);
+                          e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: "100%",
+                        height: "200px",
+                        backgroundColor: "#f5f5f5",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "2px dashed #ddd"
+                      }}>
+                        <p style={{ color: "#999" }}>No Banner</p>
+                      </div>
+                    )}
+                    <div className="banner-hover-buttons" style={{
+                      position: "absolute",
+                      bottom: "10px",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      display: "flex",
+                      gap: "10px",
+                      flexWrap: "wrap",
+                      justifyContent: "center"
+                    }}>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={fileInputRefs[index]}
+                        style={{ display: "none" }}
+                        onChange={(e) => handleImageChange(index, e, "extra")}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "extra")}
+                      />
+                      <Button
+                        variant="contained"
+                        onClick={() => fileInputRefs[index].current?.click()}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "extra")}
+                        sx={{
+                          backgroundColor: "#000",
+                          color: "white",
+                          fontSize: "12px",
+                          padding: "6px 16px",
+                          "&:hover": { backgroundColor: "#333" },
+                          "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                        }}
+                      >
+                        {uploading && editingBannerIndex === index && editingBannerSection === "extra" ? "Uploading..." : "Browse Image"}
+                      </Button>
+                      {banner && (
+                        <>
+                          <Button
+                            variant="contained"
+                            onClick={() => handleDeleteBanner(index, "extra")}
+                            disabled={uploading || (editingBannerIndex === index && editingBannerSection === "extra") || (deleting === index + 1 && deletingSection === "extra")}
+                            sx={{
+                              backgroundColor: "#d32f2f",
+                              color: "white",
+                              fontSize: "12px",
+                              padding: "6px 16px",
+                              "&:hover": { backgroundColor: "#c62828" },
+                              "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                            }}
+                          >
+                            {(deleting === index + 1 && deletingSection === "extra") ? "Deleting..." : "Delete"}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    <div style={{
+                      position: "absolute",
+                      top: "10px",
+                      left: "10px",
+                      backgroundColor: "rgba(0,0,0,0.7)",
+                      color: "white",
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                      fontSize: "12px"
+                    }}>
+                      Banner {index + 1}
+                    </div>
+                  </div>
+                  <div style={{ padding: "8px", backgroundColor: "#fafafa", borderTop: "1px solid #eee" }}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      label="Redirect URL"
+                      placeholder="https://..."
+                      value={slotRedirectUrls[`extra_${index}`] !== undefined ? slotRedirectUrls[`extra_${index}`] : (banner?.redirecturl || "")}
+                      onChange={(e) => setSlotRedirectUrls((prev) => ({ ...prev, [`extra_${index}`]: e.target.value }))}
+                      sx={{ "& .MuiInputBase-root": { fontSize: "12px" }, "zIndex": "1000" }}
+                    />
+                  </div>
                 </div>
-              )}
-              
-              <div className="banner-hover-buttons" style={{ 
-                position: "absolute", 
-                bottom: "10px", 
-                left: "50%", 
-                transform: "translateX(-50%)",
-                display: "flex",
-                gap: "10px",
-                flexWrap: "wrap",
-                justifyContent: "center"
-              }}>
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref={fileInputRefs[index]}
-                  style={{ display: "none" }}
-                  onChange={(e) => handleImageChange(index, e, "extra")}
-                  disabled={uploading || (editingBannerIndex === index && editingBannerSection === "extra")}
-                />
-                <Button
-                  variant="contained"
-                  onClick={() => fileInputRefs[index].current?.click()}
-                  disabled={uploading || (editingBannerIndex === index && editingBannerSection === "extra")}
-                  sx={{
-                    backgroundColor: "#000",
-                    color: "white",
-                    fontSize: "12px",
-                    padding: "6px 16px",
-                    "&:hover": { backgroundColor: "#333" },
-                    "&:disabled": { backgroundColor: "#ccc", color: "#666" }
-                  }}
-                >
-                  {uploading && editingBannerIndex === index && editingBannerSection === "extra" ? "Uploading..." : "Browse Image"}
-                </Button>
-                {banner && (
-                  <>
-                    {/* <Button
-                      variant="contained"
-                      onClick={() => handleEditBanner(index)}
-                      disabled={uploading || editingBannerIndex === index || updating}
-                      sx={{
-                        backgroundColor: "#1976d2",
-                        color: "white",
-                        fontSize: "12px",
-                        padding: "6px 16px",
-                        "&:hover": { backgroundColor: "#1565c0" },
-                        "&:disabled": { backgroundColor: "#ccc", color: "#666" }
-                      }}
-                    >
-                      Update
-                    </Button> */}
-                    <Button
-                      variant="contained"
-                      onClick={() => handleDeleteBanner(index, "extra")}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "extra") || (deleting === index + 1 && deletingSection === "extra")}
-                      sx={{
-                        backgroundColor: "#d32f2f",
-                        color: "white",
-                        fontSize: "12px",
-                        padding: "6px 16px",
-                        "&:hover": { backgroundColor: "#c62828" },
-                        "&:disabled": { backgroundColor: "#ccc", color: "#666" }
-                      }}
-                    >
-                      {(deleting === index + 1 && deletingSection === "extra") ? "Deleting..." : "Delete"}
-                    </Button>
-                  </>
-                )}
-              </div>
-              
-              <div style={{ 
-                position: "absolute", 
-                top: "10px", 
-                left: "10px", 
-                backgroundColor: "rgba(0,0,0,0.7)", 
-                color: "white", 
-                padding: "4px 8px", 
-                borderRadius: "4px",
-                fontSize: "12px"
-              }}>
-                Banner {index + 1}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
         </>
       )}
 
@@ -743,9 +747,9 @@ function ExtraBannerManagement() {
           </div>
 
           {/* Best Sellers Banner Display - 5 Fixed Slots */}
-          <div className="banners-page-top-banners-container" style={{ 
-            display: "grid", 
-            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", 
+          <div className="banners-page-top-banners-container" style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
             gap: "20px",
             borderBottomColor: "#1976d2"
           }}>
@@ -755,107 +759,118 @@ function ExtraBannerManagement() {
               const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
               const bannerId = banner?.id || banner?.sliderId;
               const position = index + 10; // Positions 10-14
-              
+
               return (
-                <div 
-                  key={index} 
-                  className="banners-page-banner-container" 
-                  style={{ 
-                    position: "relative", 
+                <div
+                  key={index}
+                  className="banners-page-banner-container"
+                  style={{
+                    position: "relative",
                     minHeight: "200px",
                     border: "2px solid #1976d2",
                     borderRadius: "8px",
                     overflow: "hidden"
                   }}
                 >
-                  {imageUrl ? (
-                    <img 
-                      src={imageUrl} 
-                      alt={`Best Seller Banner ${position}`}
-                      style={{ width: "100%", height: "auto", display: "block" }}
-                      onError={(e) => {
-                        console.error(`Failed to load image: ${imageUrl}`);
-                        e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
-                      }}
-                    />
-                  ) : (
-                    <div style={{ 
-                      width: "100%", 
-                      height: "200px", 
-                      backgroundColor: "#e3f2fd", 
-                      display: "flex", 
-                      alignItems: "center", 
-                      justifyContent: "center",
-                      border: "2px dashed #1976d2"
+                  <div style={{ position: "relative" }}>
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt={`Best Seller Banner ${position}`}
+                        style={{ width: "100%", height: "auto", display: "block" }}
+                        onError={(e) => {
+                          console.error(`Failed to load image: ${imageUrl}`);
+                          e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: "100%",
+                        height: "200px",
+                        backgroundColor: "#e3f2fd",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "2px dashed #1976d2"
+                      }}>
+                        <p style={{ color: "#1976d2", fontWeight: "500" }}>No Banner</p>
+                      </div>
+                    )}
+                    <div className="banner-hover-buttons" style={{
+                      position: "absolute",
+                      bottom: "10px",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      display: "flex",
+                      gap: "10px",
+                      flexWrap: "wrap",
+                      justifyContent: "center"
                     }}>
-                      <p style={{ color: "#1976d2", fontWeight: "500" }}>No Banner</p>
-                    </div>
-                  )}
-                  
-                  <div className="banner-hover-buttons" style={{ 
-                    position: "absolute", 
-                    bottom: "10px", 
-                    left: "50%", 
-                    transform: "translateX(-50%)",
-                    display: "flex",
-                    gap: "10px",
-                    flexWrap: "wrap",
-                    justifyContent: "center"
-                  }}>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref={bestSellersFileInputRefs[index]}
-                      style={{ display: "none" }}
-                      onChange={(e) => handleImageChange(index, e, "bestsellers")}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "bestsellers")}
-                    />
-                    <Button
-                      variant="contained"
-                      onClick={() => bestSellersFileInputRefs[index].current?.click()}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "bestsellers")}
-                      sx={{
-                        backgroundColor: "#1976d2",
-                        color: "white",
-                        fontSize: "12px",
-                        padding: "6px 16px",
-                        "&:hover": { backgroundColor: "#1565c0" },
-                        "&:disabled": { backgroundColor: "#ccc", color: "#666" }
-                      }}
-                    >
-                      {uploading && editingBannerIndex === index && editingBannerSection === "bestsellers" ? "Uploading..." : "Browse Image"}
-                    </Button>
-                    {banner && (
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={bestSellersFileInputRefs[index]}
+                        style={{ display: "none" }}
+                        onChange={(e) => handleImageChange(index, e, "bestsellers")}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "bestsellers")}
+                      />
                       <Button
                         variant="contained"
-                        onClick={() => handleDeleteBanner(index, "bestsellers")}
-                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "bestsellers") || (deleting === position && deletingSection === "bestsellers")}
+                        onClick={() => bestSellersFileInputRefs[index].current?.click()}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "bestsellers")}
                         sx={{
-                          backgroundColor: "#d32f2f",
+                          backgroundColor: "#1976d2",
                           color: "white",
                           fontSize: "12px",
                           padding: "6px 16px",
-                          "&:hover": { backgroundColor: "#c62828" },
+                          "&:hover": { backgroundColor: "#1565c0" },
                           "&:disabled": { backgroundColor: "#ccc", color: "#666" }
                         }}
                       >
-                        {(deleting === position && deletingSection === "bestsellers") ? "Deleting..." : "Delete"}
+                        {uploading && editingBannerIndex === index && editingBannerSection === "bestsellers" ? "Uploading..." : "Browse Image"}
                       </Button>
-                    )}
+                      {banner && (
+                        <Button
+                          variant="contained"
+                          onClick={() => handleDeleteBanner(index, "bestsellers")}
+                          disabled={uploading || (editingBannerIndex === index && editingBannerSection === "bestsellers") || (deleting === position && deletingSection === "bestsellers")}
+                          sx={{
+                            backgroundColor: "#d32f2f",
+                            color: "white",
+                            fontSize: "12px",
+                            padding: "6px 16px",
+                            "&:hover": { backgroundColor: "#c62828" },
+                            "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                          }}
+                        >
+                          {(deleting === position && deletingSection === "bestsellers") ? "Deleting..." : "Delete"}
+                        </Button>
+                      )}
+                    </div>
+                    <div style={{
+                      position: "absolute",
+                      top: "10px",
+                      left: "10px",
+                      backgroundColor: "rgba(25, 118, 210, 0.9)",
+                      color: "white",
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                      fontSize: "12px",
+                      fontWeight: "600"
+                    }}>
+                      Banner {position}
+                    </div>
                   </div>
-                  
-                  <div style={{ 
-                    position: "absolute", 
-                    top: "10px", 
-                    left: "10px", 
-                    backgroundColor: "rgba(25, 118, 210, 0.9)", 
-                    color: "white", 
-                    padding: "4px 8px", 
-                    borderRadius: "4px",
-                    fontSize: "12px",
-                    fontWeight: "600"
-                  }}>
-                    Banner {position}
+                  <div style={{ padding: "8px", backgroundColor: "#e3f2fd", borderTop: "1px solid #1976d2" }}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      label="Redirect URL"
+                      placeholder="https://..."
+                      value={slotRedirectUrls[`bestsellers_${index}`] !== undefined ? slotRedirectUrls[`bestsellers_${index}`] : (banner?.redirecturl || "")}
+                      onChange={(e) => setSlotRedirectUrls((prev) => ({ ...prev, [`bestsellers_${index}`]: e.target.value }))}
+                      sx={{ "& .MuiInputBase-root": { fontSize: "12px" }, "zIndex": "1000" }}
+                    />
                   </div>
                 </div>
               );
@@ -872,9 +887,9 @@ function ExtraBannerManagement() {
           </div>
 
           {/* Entertainment Banner Display - 4 Fixed Slots */}
-          <div className="banners-page-top-banners-container" style={{ 
-            display: "grid", 
-            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", 
+          <div className="banners-page-top-banners-container" style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
             gap: "20px",
             borderBottomColor: "#9c27b0"
           }}>
@@ -882,107 +897,118 @@ function ExtraBannerManagement() {
               const banner = entertainmentBanners[index];
               const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
               const position = index + 15; // Positions 15-18
-              
+
               return (
-                <div 
-                  key={index} 
-                  className="banners-page-banner-container" 
-                  style={{ 
-                    position: "relative", 
+                <div
+                  key={index}
+                  className="banners-page-banner-container"
+                  style={{
+                    position: "relative",
                     minHeight: "200px",
                     border: "2px solid #9c27b0",
                     borderRadius: "8px",
                     overflow: "hidden"
                   }}
                 >
-                  {imageUrl ? (
-                    <img 
-                      src={imageUrl} 
-                      alt={`Entertainment Banner ${position}`}
-                      style={{ width: "100%", height: "auto", display: "block" }}
-                      onError={(e) => {
-                        console.error(`Failed to load image: ${imageUrl}`);
-                        e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
-                      }}
-                    />
-                  ) : (
-                    <div style={{ 
-                      width: "100%", 
-                      height: "200px", 
-                      backgroundColor: "#f3e5f5", 
-                      display: "flex", 
-                      alignItems: "center", 
-                      justifyContent: "center",
-                      border: "2px dashed #9c27b0"
+                  <div style={{ position: "relative" }}>
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt={`Entertainment Banner ${position}`}
+                        style={{ width: "100%", height: "auto", display: "block" }}
+                        onError={(e) => {
+                          console.error(`Failed to load image: ${imageUrl}`);
+                          e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: "100%",
+                        height: "200px",
+                        backgroundColor: "#f3e5f5",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "2px dashed #9c27b0"
+                      }}>
+                        <p style={{ color: "#9c27b0", fontWeight: "500" }}>No Banner</p>
+                      </div>
+                    )}
+                    <div className="banner-hover-buttons" style={{
+                      position: "absolute",
+                      bottom: "10px",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      display: "flex",
+                      gap: "10px",
+                      flexWrap: "wrap",
+                      justifyContent: "center"
                     }}>
-                      <p style={{ color: "#9c27b0", fontWeight: "500" }}>No Banner</p>
-                    </div>
-                  )}
-                  
-                  <div className="banner-hover-buttons" style={{ 
-                    position: "absolute", 
-                    bottom: "10px", 
-                    left: "50%", 
-                    transform: "translateX(-50%)",
-                    display: "flex",
-                    gap: "10px",
-                    flexWrap: "wrap",
-                    justifyContent: "center"
-                  }}>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref={entertainmentFileInputRefs[index]}
-                      style={{ display: "none" }}
-                      onChange={(e) => handleImageChange(index, e, "entertainment")}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "entertainment")}
-                    />
-                    <Button
-                      variant="contained"
-                      onClick={() => entertainmentFileInputRefs[index].current?.click()}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "entertainment")}
-                      sx={{
-                        backgroundColor: "#9c27b0",
-                        color: "white",
-                        fontSize: "12px",
-                        padding: "6px 16px",
-                        "&:hover": { backgroundColor: "#7b1fa2" },
-                        "&:disabled": { backgroundColor: "#ccc", color: "#666" }
-                      }}
-                    >
-                      {uploading && editingBannerIndex === index && editingBannerSection === "entertainment" ? "Uploading..." : "Browse Image"}
-                    </Button>
-                    {banner && (
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={entertainmentFileInputRefs[index]}
+                        style={{ display: "none" }}
+                        onChange={(e) => handleImageChange(index, e, "entertainment")}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "entertainment")}
+                      />
                       <Button
                         variant="contained"
-                        onClick={() => handleDeleteBanner(index, "entertainment")}
-                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "entertainment") || (deleting === position && deletingSection === "entertainment")}
+                        onClick={() => entertainmentFileInputRefs[index].current?.click()}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "entertainment")}
                         sx={{
-                          backgroundColor: "#d32f2f",
+                          backgroundColor: "#9c27b0",
                           color: "white",
                           fontSize: "12px",
                           padding: "6px 16px",
-                          "&:hover": { backgroundColor: "#c62828" },
+                          "&:hover": { backgroundColor: "#7b1fa2" },
                           "&:disabled": { backgroundColor: "#ccc", color: "#666" }
                         }}
                       >
-                        {(deleting === position && deletingSection === "entertainment") ? "Deleting..." : "Delete"}
+                        {uploading && editingBannerIndex === index && editingBannerSection === "entertainment" ? "Uploading..." : "Browse Image"}
                       </Button>
-                    )}
+                      {banner && (
+                        <Button
+                          variant="contained"
+                          onClick={() => handleDeleteBanner(index, "entertainment")}
+                          disabled={uploading || (editingBannerIndex === index && editingBannerSection === "entertainment") || (deleting === position && deletingSection === "entertainment")}
+                          sx={{
+                            backgroundColor: "#d32f2f",
+                            color: "white",
+                            fontSize: "12px",
+                            padding: "6px 16px",
+                            "&:hover": { backgroundColor: "#c62828" },
+                            "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                          }}
+                        >
+                          {(deleting === position && deletingSection === "entertainment") ? "Deleting..." : "Delete"}
+                        </Button>
+                      )}
+                    </div>
+                    <div style={{
+                      position: "absolute",
+                      top: "10px",
+                      left: "10px",
+                      backgroundColor: "rgba(156, 39, 176, 0.9)",
+                      color: "white",
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                      fontSize: "12px",
+                      fontWeight: "600"
+                    }}>
+                      Banner {position}
+                    </div>
                   </div>
-                  
-                  <div style={{ 
-                    position: "absolute", 
-                    top: "10px", 
-                    left: "10px", 
-                    backgroundColor: "rgba(156, 39, 176, 0.9)", 
-                    color: "white", 
-                    padding: "4px 8px", 
-                    borderRadius: "4px",
-                    fontSize: "12px",
-                    fontWeight: "600"
-                  }}>
-                    Banner {position}
+                  <div style={{ padding: "8px", backgroundColor: "#f3e5f5", borderTop: "1px solid #9c27b0" }}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      label="Redirect URL"
+                      placeholder="https://..."
+                      value={slotRedirectUrls[`entertainment_${index}`] !== undefined ? slotRedirectUrls[`entertainment_${index}`] : (banner?.redirecturl || "")}
+                      onChange={(e) => setSlotRedirectUrls((prev) => ({ ...prev, [`entertainment_${index}`]: e.target.value }))}
+                      sx={{ "& .MuiInputBase-root": { fontSize: "12px" }, "zIndex": "1000" }}
+                    />
                   </div>
                 </div>
               );
@@ -999,9 +1025,9 @@ function ExtraBannerManagement() {
           </div>
 
           {/* Appliances Banner Display - 4 Fixed Slots */}
-          <div className="banners-page-top-banners-container" style={{ 
-            display: "grid", 
-            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", 
+          <div className="banners-page-top-banners-container" style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
             gap: "20px",
             borderBottomColor: "#2e7d32"
           }}>
@@ -1009,107 +1035,118 @@ function ExtraBannerManagement() {
               const banner = appliancesBanners[index];
               const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
               const position = index + 19; // Positions 19-22
-              
+
               return (
-                <div 
-                  key={index} 
-                  className="banners-page-banner-container" 
-                  style={{ 
-                    position: "relative", 
+                <div
+                  key={index}
+                  className="banners-page-banner-container"
+                  style={{
+                    position: "relative",
                     minHeight: "200px",
                     border: "2px solid #2e7d32",
                     borderRadius: "8px",
                     overflow: "hidden"
                   }}
                 >
-                  {imageUrl ? (
-                    <img 
-                      src={imageUrl} 
-                      alt={`Appliances Banner ${position}`}
-                      style={{ width: "100%", height: "auto", display: "block" }}
-                      onError={(e) => {
-                        console.error(`Failed to load image: ${imageUrl}`);
-                        e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
-                      }}
-                    />
-                  ) : (
-                    <div style={{ 
-                      width: "100%", 
-                      height: "200px", 
-                      backgroundColor: "#e8f5e9", 
-                      display: "flex", 
-                      alignItems: "center", 
-                      justifyContent: "center",
-                      border: "2px dashed #2e7d32"
+                  <div style={{ position: "relative" }}>
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt={`Appliances Banner ${position}`}
+                        style={{ width: "100%", height: "auto", display: "block" }}
+                        onError={(e) => {
+                          console.error(`Failed to load image: ${imageUrl}`);
+                          e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: "100%",
+                        height: "200px",
+                        backgroundColor: "#e8f5e9",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "2px dashed #2e7d32"
+                      }}>
+                        <p style={{ color: "#2e7d32", fontWeight: "500" }}>No Banner</p>
+                      </div>
+                    )}
+                    <div className="banner-hover-buttons" style={{
+                      position: "absolute",
+                      bottom: "10px",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      display: "flex",
+                      gap: "10px",
+                      flexWrap: "wrap",
+                      justifyContent: "center"
                     }}>
-                      <p style={{ color: "#2e7d32", fontWeight: "500" }}>No Banner</p>
-                    </div>
-                  )}
-                  
-                  <div className="banner-hover-buttons" style={{ 
-                    position: "absolute", 
-                    bottom: "10px", 
-                    left: "50%", 
-                    transform: "translateX(-50%)",
-                    display: "flex",
-                    gap: "10px",
-                    flexWrap: "wrap",
-                    justifyContent: "center"
-                  }}>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref={appliancesFileInputRefs[index]}
-                      style={{ display: "none" }}
-                      onChange={(e) => handleImageChange(index, e, "appliances")}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "appliances")}
-                    />
-                    <Button
-                      variant="contained"
-                      onClick={() => appliancesFileInputRefs[index].current?.click()}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "appliances")}
-                      sx={{
-                        backgroundColor: "#2e7d32",
-                        color: "white",
-                        fontSize: "12px",
-                        padding: "6px 16px",
-                        "&:hover": { backgroundColor: "#1b5e20" },
-                        "&:disabled": { backgroundColor: "#ccc", color: "#666" }
-                      }}
-                    >
-                      {uploading && editingBannerIndex === index && editingBannerSection === "appliances" ? "Uploading..." : "Browse Image"}
-                    </Button>
-                    {banner && (
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={appliancesFileInputRefs[index]}
+                        style={{ display: "none" }}
+                        onChange={(e) => handleImageChange(index, e, "appliances")}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "appliances")}
+                      />
                       <Button
                         variant="contained"
-                        onClick={() => handleDeleteBanner(index, "appliances")}
-                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "appliances") || (deleting === position && deletingSection === "appliances")}
+                        onClick={() => appliancesFileInputRefs[index].current?.click()}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "appliances")}
                         sx={{
-                          backgroundColor: "#d32f2f",
+                          backgroundColor: "#2e7d32",
                           color: "white",
                           fontSize: "12px",
                           padding: "6px 16px",
-                          "&:hover": { backgroundColor: "#c62828" },
+                          "&:hover": { backgroundColor: "#1b5e20" },
                           "&:disabled": { backgroundColor: "#ccc", color: "#666" }
                         }}
                       >
-                        {(deleting === position && deletingSection === "appliances") ? "Deleting..." : "Delete"}
+                        {uploading && editingBannerIndex === index && editingBannerSection === "appliances" ? "Uploading..." : "Browse Image"}
                       </Button>
-                    )}
+                      {banner && (
+                        <Button
+                          variant="contained"
+                          onClick={() => handleDeleteBanner(index, "appliances")}
+                          disabled={uploading || (editingBannerIndex === index && editingBannerSection === "appliances") || (deleting === position && deletingSection === "appliances")}
+                          sx={{
+                            backgroundColor: "#d32f2f",
+                            color: "white",
+                            fontSize: "12px",
+                            padding: "6px 16px",
+                            "&:hover": { backgroundColor: "#c62828" },
+                            "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                          }}
+                        >
+                          {(deleting === position && deletingSection === "appliances") ? "Deleting..." : "Delete"}
+                        </Button>
+                      )}
+                    </div>
+                    <div style={{
+                      position: "absolute",
+                      top: "10px",
+                      left: "10px",
+                      backgroundColor: "rgba(46, 125, 50, 0.9)",
+                      color: "white",
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                      fontSize: "12px",
+                      fontWeight: "600"
+                    }}>
+                      Banner {position}
+                    </div>
                   </div>
-                  
-                  <div style={{ 
-                    position: "absolute", 
-                    top: "10px", 
-                    left: "10px", 
-                    backgroundColor: "rgba(46, 125, 50, 0.9)", 
-                    color: "white", 
-                    padding: "4px 8px", 
-                    borderRadius: "4px",
-                    fontSize: "12px",
-                    fontWeight: "600"
-                  }}>
-                    Banner {position}
+                  <div style={{ padding: "8px", backgroundColor: "#e8f5e9", borderTop: "1px solid #2e7d32" }}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      label="Redirect URL"
+                      placeholder="https://..."
+                      value={slotRedirectUrls[`appliances_${index}`] !== undefined ? slotRedirectUrls[`appliances_${index}`] : (banner?.redirecturl || "")}
+                      onChange={(e) => setSlotRedirectUrls((prev) => ({ ...prev, [`appliances_${index}`]: e.target.value }))}
+                      sx={{ "& .MuiInputBase-root": { fontSize: "12px" }, "zIndex": "1000" }}
+                    />
                   </div>
                 </div>
               );
@@ -1126,9 +1163,9 @@ function ExtraBannerManagement() {
           </div>
 
           {/* Digital Products Banner Display - 4 Fixed Slots */}
-          <div className="banners-page-top-banners-container" style={{ 
-            display: "grid", 
-            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", 
+          <div className="banners-page-top-banners-container" style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
             gap: "20px",
             borderBottomColor: "#f57c00"
           }}>
@@ -1136,107 +1173,118 @@ function ExtraBannerManagement() {
               const banner = digitalProductsBanners[index];
               const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
               const position = index + 23; // Positions 23-26
-              
+
               return (
-                <div 
-                  key={index} 
-                  className="banners-page-banner-container" 
-                  style={{ 
-                    position: "relative", 
+                <div
+                  key={index}
+                  className="banners-page-banner-container"
+                  style={{
+                    position: "relative",
                     minHeight: "200px",
                     border: "2px solid #f57c00",
                     borderRadius: "8px",
                     overflow: "hidden"
                   }}
                 >
-                  {imageUrl ? (
-                    <img 
-                      src={imageUrl} 
-                      alt={`Digital Products Banner ${position}`}
-                      style={{ width: "100%", height: "auto", display: "block" }}
-                      onError={(e) => {
-                        console.error(`Failed to load image: ${imageUrl}`);
-                        e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
-                      }}
-                    />
-                  ) : (
-                    <div style={{ 
-                      width: "100%", 
-                      height: "200px", 
-                      backgroundColor: "#fff3e0", 
-                      display: "flex", 
-                      alignItems: "center", 
-                      justifyContent: "center",
-                      border: "2px dashed #f57c00"
+                  <div style={{ position: "relative" }}>
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt={`Digital Products Banner ${position}`}
+                        style={{ width: "100%", height: "auto", display: "block" }}
+                        onError={(e) => {
+                          console.error(`Failed to load image: ${imageUrl}`);
+                          e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: "100%",
+                        height: "200px",
+                        backgroundColor: "#fff3e0",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "2px dashed #f57c00"
+                      }}>
+                        <p style={{ color: "#f57c00", fontWeight: "500" }}>No Banner</p>
+                      </div>
+                    )}
+                    <div className="banner-hover-buttons" style={{
+                      position: "absolute",
+                      bottom: "10px",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      display: "flex",
+                      gap: "10px",
+                      flexWrap: "wrap",
+                      justifyContent: "center"
                     }}>
-                      <p style={{ color: "#f57c00", fontWeight: "500" }}>No Banner</p>
-                    </div>
-                  )}
-                  
-                  <div className="banner-hover-buttons" style={{ 
-                    position: "absolute", 
-                    bottom: "10px", 
-                    left: "50%", 
-                    transform: "translateX(-50%)",
-                    display: "flex",
-                    gap: "10px",
-                    flexWrap: "wrap",
-                    justifyContent: "center"
-                  }}>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref={digitalProductsFileInputRefs[index]}
-                      style={{ display: "none" }}
-                      onChange={(e) => handleImageChange(index, e, "digitalproducts")}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "digitalproducts")}
-                    />
-                    <Button
-                      variant="contained"
-                      onClick={() => digitalProductsFileInputRefs[index].current?.click()}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "digitalproducts")}
-                      sx={{
-                        backgroundColor: "#f57c00",
-                        color: "white",
-                        fontSize: "12px",
-                        padding: "6px 16px",
-                        "&:hover": { backgroundColor: "#e65100" },
-                        "&:disabled": { backgroundColor: "#ccc", color: "#666" }
-                      }}
-                    >
-                      {uploading && editingBannerIndex === index && editingBannerSection === "digitalproducts" ? "Uploading..." : "Browse Image"}
-                    </Button>
-                    {banner && (
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={digitalProductsFileInputRefs[index]}
+                        style={{ display: "none" }}
+                        onChange={(e) => handleImageChange(index, e, "digitalproducts")}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "digitalproducts")}
+                      />
                       <Button
                         variant="contained"
-                        onClick={() => handleDeleteBanner(index, "digitalproducts")}
-                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "digitalproducts") || (deleting === position && deletingSection === "digitalproducts")}
+                        onClick={() => digitalProductsFileInputRefs[index].current?.click()}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "digitalproducts")}
                         sx={{
-                          backgroundColor: "#d32f2f",
+                          backgroundColor: "#f57c00",
                           color: "white",
                           fontSize: "12px",
                           padding: "6px 16px",
-                          "&:hover": { backgroundColor: "#c62828" },
+                          "&:hover": { backgroundColor: "#e65100" },
                           "&:disabled": { backgroundColor: "#ccc", color: "#666" }
                         }}
                       >
-                        {(deleting === position && deletingSection === "digitalproducts") ? "Deleting..." : "Delete"}
+                        {uploading && editingBannerIndex === index && editingBannerSection === "digitalproducts" ? "Uploading..." : "Browse Image"}
                       </Button>
-                    )}
+                      {banner && (
+                        <Button
+                          variant="contained"
+                          onClick={() => handleDeleteBanner(index, "digitalproducts")}
+                          disabled={uploading || (editingBannerIndex === index && editingBannerSection === "digitalproducts") || (deleting === position && deletingSection === "digitalproducts")}
+                          sx={{
+                            backgroundColor: "#d32f2f",
+                            color: "white",
+                            fontSize: "12px",
+                            padding: "6px 16px",
+                            "&:hover": { backgroundColor: "#c62828" },
+                            "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                          }}
+                        >
+                          {(deleting === position && deletingSection === "digitalproducts") ? "Deleting..." : "Delete"}
+                        </Button>
+                      )}
+                    </div>
+                    <div style={{
+                      position: "absolute",
+                      top: "10px",
+                      left: "10px",
+                      backgroundColor: "rgba(245, 124, 0, 0.9)",
+                      color: "white",
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                      fontSize: "12px",
+                      fontWeight: "600"
+                    }}>
+                      Banner {position}
+                    </div>
                   </div>
-                  
-                  <div style={{ 
-                    position: "absolute", 
-                    top: "10px", 
-                    left: "10px", 
-                    backgroundColor: "rgba(245, 124, 0, 0.9)", 
-                    color: "white", 
-                    padding: "4px 8px", 
-                    borderRadius: "4px",
-                    fontSize: "12px",
-                    fontWeight: "600"
-                  }}>
-                    Banner {position}
+                  <div style={{ padding: "8px", backgroundColor: "#fff3e0", borderTop: "1px solid #f57c00" }}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      label="Redirect URL"
+                      placeholder="https://..."
+                      value={slotRedirectUrls[`digitalproducts_${index}`] !== undefined ? slotRedirectUrls[`digitalproducts_${index}`] : (banner?.redirecturl || "")}
+                      onChange={(e) => setSlotRedirectUrls((prev) => ({ ...prev, [`digitalproducts_${index}`]: e.target.value }))}
+                      sx={{ "& .MuiInputBase-root": { fontSize: "12px" }, "zIndex": "1000" }}
+                    />
                   </div>
                 </div>
               );
@@ -1253,9 +1301,9 @@ function ExtraBannerManagement() {
           </div>
 
           {/* Kitchen Appliances Banner Display - 8 Fixed Slots */}
-          <div className="banners-page-top-banners-container" style={{ 
-            display: "grid", 
-            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", 
+          <div className="banners-page-top-banners-container" style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
             gap: "20px",
             borderBottomColor: "#d32f2f"
           }}>
@@ -1263,81 +1311,65 @@ function ExtraBannerManagement() {
               const banner = kitchenAppliancesBanners[index];
               const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
               const position = index + 27; // Positions 27-34
-              
+
               return (
-                <div 
-                  key={index} 
-                  className="banners-page-banner-container" 
-                  style={{ 
-                    position: "relative", 
+                <div
+                  key={index}
+                  className="banners-page-banner-container"
+                  style={{
+                    position: "relative",
                     minHeight: "200px",
                     border: "2px solid #d32f2f",
                     borderRadius: "8px",
                     overflow: "hidden"
                   }}
                 >
-                  {imageUrl ? (
-                    <img 
-                      src={imageUrl} 
-                      alt={`Kitchen Appliances Banner ${position}`}
-                      style={{ width: "100%", height: "auto", display: "block" }}
-                      onError={(e) => {
-                        console.error(`Failed to load image: ${imageUrl}`);
-                        e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
-                      }}
-                    />
-                  ) : (
-                    <div style={{ 
-                      width: "100%", 
-                      height: "200px", 
-                      backgroundColor: "#ffebee", 
-                      display: "flex", 
-                      alignItems: "center", 
-                      justifyContent: "center",
-                      border: "2px dashed #d32f2f"
+                  <div style={{ position: "relative" }}>
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt={`Kitchen Appliances Banner ${position}`}
+                        style={{ width: "100%", height: "auto", display: "block" }}
+                        onError={(e) => {
+                          console.error(`Failed to load image: ${imageUrl}`);
+                          e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: "100%",
+                        height: "200px",
+                        backgroundColor: "#ffebee",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "2px dashed #d32f2f"
+                      }}>
+                        <p style={{ color: "#d32f2f", fontWeight: "500" }}>No Banner</p>
+                      </div>
+                    )}
+                    <div className="banner-hover-buttons" style={{
+                      position: "absolute",
+                      bottom: "10px",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      display: "flex",
+                      gap: "10px",
+                      flexWrap: "wrap",
+                      justifyContent: "center"
                     }}>
-                      <p style={{ color: "#d32f2f", fontWeight: "500" }}>No Banner</p>
-                    </div>
-                  )}
-                  
-                  <div className="banner-hover-buttons" style={{ 
-                    position: "absolute", 
-                    bottom: "10px", 
-                    left: "50%", 
-                    transform: "translateX(-50%)",
-                    display: "flex",
-                    gap: "10px",
-                    flexWrap: "wrap",
-                    justifyContent: "center"
-                  }}>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref={kitchenAppliancesFileInputRefs[index]}
-                      style={{ display: "none" }}
-                      onChange={(e) => handleImageChange(index, e, "kitchenappliances")}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "kitchenappliances")}
-                    />
-                    <Button
-                      variant="contained"
-                      onClick={() => kitchenAppliancesFileInputRefs[index].current?.click()}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "kitchenappliances")}
-                      sx={{
-                        backgroundColor: "#d32f2f",
-                        color: "white",
-                        fontSize: "12px",
-                        padding: "6px 16px",
-                        "&:hover": { backgroundColor: "#b71c1c" },
-                        "&:disabled": { backgroundColor: "#ccc", color: "#666" }
-                      }}
-                    >
-                      {uploading && editingBannerIndex === index && editingBannerSection === "kitchenappliances" ? "Uploading..." : "Browse Image"}
-                    </Button>
-                    {banner && (
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={kitchenAppliancesFileInputRefs[index]}
+                        style={{ display: "none" }}
+                        onChange={(e) => handleImageChange(index, e, "kitchenappliances")}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "kitchenappliances")}
+                      />
                       <Button
                         variant="contained"
-                        onClick={() => handleDeleteBanner(index, "kitchenappliances")}
-                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "kitchenappliances") || (deleting === position && deletingSection === "kitchenappliances")}
+                        onClick={() => kitchenAppliancesFileInputRefs[index].current?.click()}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "kitchenappliances")}
                         sx={{
                           backgroundColor: "#d32f2f",
                           color: "white",
@@ -1347,23 +1379,50 @@ function ExtraBannerManagement() {
                           "&:disabled": { backgroundColor: "#ccc", color: "#666" }
                         }}
                       >
-                        {(deleting === position && deletingSection === "kitchenappliances") ? "Deleting..." : "Delete"}
+                        {uploading && editingBannerIndex === index && editingBannerSection === "kitchenappliances" ? "Uploading..." : "Browse Image"}
                       </Button>
-                    )}
+                      {banner && (
+                        <Button
+                          variant="contained"
+                          onClick={() => handleDeleteBanner(index, "kitchenappliances")}
+                          disabled={uploading || (editingBannerIndex === index && editingBannerSection === "kitchenappliances") || (deleting === position && deletingSection === "kitchenappliances")}
+                          sx={{
+                            backgroundColor: "#d32f2f",
+                            color: "white",
+                            fontSize: "12px",
+                            padding: "6px 16px",
+                            "&:hover": { backgroundColor: "#b71c1c" },
+                            "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                          }}
+                        >
+                          {(deleting === position && deletingSection === "kitchenappliances") ? "Deleting..." : "Delete"}
+                        </Button>
+                      )}
+                    </div>
+                    <div style={{
+                      position: "absolute",
+                      top: "10px",
+                      left: "10px",
+                      backgroundColor: "rgba(211, 47, 47, 0.9)",
+                      color: "white",
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                      fontSize: "12px",
+                      fontWeight: "600"
+                    }}>
+                      Banner {position}
+                    </div>
                   </div>
-                  
-                  <div style={{ 
-                    position: "absolute", 
-                    top: "10px", 
-                    left: "10px", 
-                    backgroundColor: "rgba(211, 47, 47, 0.9)", 
-                    color: "white", 
-                    padding: "4px 8px", 
-                    borderRadius: "4px",
-                    fontSize: "12px",
-                    fontWeight: "600"
-                  }}>
-                    Banner {position}
+                  <div style={{ padding: "8px", backgroundColor: "#ffebee", borderTop: "1px solid #d32f2f" }}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      label="Redirect URL"
+                      placeholder="https://..."
+                      value={slotRedirectUrls[`kitchenappliances_${index}`] !== undefined ? slotRedirectUrls[`kitchenappliances_${index}`] : (banner?.redirecturl || "")}
+                      onChange={(e) => setSlotRedirectUrls((prev) => ({ ...prev, [`kitchenappliances_${index}`]: e.target.value }))}
+                      sx={{ "& .MuiInputBase-root": { fontSize: "12px" }, "zIndex": "1000" }}
+                    />
                   </div>
                 </div>
               );
@@ -1380,9 +1439,9 @@ function ExtraBannerManagement() {
           </div>
 
           {/* Lifestyle Products Banner Display - 4 Fixed Slots */}
-          <div className="banners-page-top-banners-container" style={{ 
-            display: "grid", 
-            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", 
+          <div className="banners-page-top-banners-container" style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
             gap: "20px",
             borderBottomColor: "#00acc1"
           }}>
@@ -1390,107 +1449,118 @@ function ExtraBannerManagement() {
               const banner = lifestyleProductsBanners[index];
               const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
               const position = index + 35; // Positions 35-38
-              
+
               return (
-                <div 
-                  key={index} 
-                  className="banners-page-banner-container" 
-                  style={{ 
-                    position: "relative", 
+                <div
+                  key={index}
+                  className="banners-page-banner-container"
+                  style={{
+                    position: "relative",
                     minHeight: "200px",
                     border: "2px solid #00acc1",
                     borderRadius: "8px",
                     overflow: "hidden"
                   }}
                 >
-                  {imageUrl ? (
-                    <img 
-                      src={imageUrl} 
-                      alt={`Lifestyle Products Banner ${position}`}
-                      style={{ width: "100%", height: "auto", display: "block" }}
-                      onError={(e) => {
-                        console.error(`Failed to load image: ${imageUrl}`);
-                        e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
-                      }}
-                    />
-                  ) : (
-                    <div style={{ 
-                      width: "100%", 
-                      height: "200px", 
-                      backgroundColor: "#e0f7fa", 
-                      display: "flex", 
-                      alignItems: "center", 
-                      justifyContent: "center",
-                      border: "2px dashed #00acc1"
+                  <div style={{ position: "relative" }}>
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt={`Lifestyle Products Banner ${position}`}
+                        style={{ width: "100%", height: "auto", display: "block" }}
+                        onError={(e) => {
+                          console.error(`Failed to load image: ${imageUrl}`);
+                          e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: "100%",
+                        height: "200px",
+                        backgroundColor: "#e0f7fa",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "2px dashed #00acc1"
+                      }}>
+                        <p style={{ color: "#00acc1", fontWeight: "500" }}>No Banner</p>
+                      </div>
+                    )}
+                    <div className="banner-hover-buttons" style={{
+                      position: "absolute",
+                      bottom: "10px",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      display: "flex",
+                      gap: "10px",
+                      flexWrap: "wrap",
+                      justifyContent: "center"
                     }}>
-                      <p style={{ color: "#00acc1", fontWeight: "500" }}>No Banner</p>
-                    </div>
-                  )}
-                  
-                  <div className="banner-hover-buttons" style={{ 
-                    position: "absolute", 
-                    bottom: "10px", 
-                    left: "50%", 
-                    transform: "translateX(-50%)",
-                    display: "flex",
-                    gap: "10px",
-                    flexWrap: "wrap",
-                    justifyContent: "center"
-                  }}>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref={lifestyleProductsFileInputRefs[index]}
-                      style={{ display: "none" }}
-                      onChange={(e) => handleImageChange(index, e, "lifestyleproducts")}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "lifestyleproducts")}
-                    />
-                    <Button
-                      variant="contained"
-                      onClick={() => lifestyleProductsFileInputRefs[index].current?.click()}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "lifestyleproducts")}
-                      sx={{
-                        backgroundColor: "#00acc1",
-                        color: "white",
-                        fontSize: "12px",
-                        padding: "6px 16px",
-                        "&:hover": { backgroundColor: "#00838f" },
-                        "&:disabled": { backgroundColor: "#ccc", color: "#666" }
-                      }}
-                    >
-                      {uploading && editingBannerIndex === index && editingBannerSection === "lifestyleproducts" ? "Uploading..." : "Browse Image"}
-                    </Button>
-                    {banner && (
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={lifestyleProductsFileInputRefs[index]}
+                        style={{ display: "none" }}
+                        onChange={(e) => handleImageChange(index, e, "lifestyleproducts")}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "lifestyleproducts")}
+                      />
                       <Button
                         variant="contained"
-                        onClick={() => handleDeleteBanner(index, "lifestyleproducts")}
-                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "lifestyleproducts") || (deleting === position && deletingSection === "lifestyleproducts")}
+                        onClick={() => lifestyleProductsFileInputRefs[index].current?.click()}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "lifestyleproducts")}
                         sx={{
-                          backgroundColor: "#d32f2f",
+                          backgroundColor: "#00acc1",
                           color: "white",
                           fontSize: "12px",
                           padding: "6px 16px",
-                          "&:hover": { backgroundColor: "#c62828" },
+                          "&:hover": { backgroundColor: "#00838f" },
                           "&:disabled": { backgroundColor: "#ccc", color: "#666" }
                         }}
                       >
-                        {(deleting === position && deletingSection === "lifestyleproducts") ? "Deleting..." : "Delete"}
+                        {uploading && editingBannerIndex === index && editingBannerSection === "lifestyleproducts" ? "Uploading..." : "Browse Image"}
                       </Button>
-                    )}
+                      {banner && (
+                        <Button
+                          variant="contained"
+                          onClick={() => handleDeleteBanner(index, "lifestyleproducts")}
+                          disabled={uploading || (editingBannerIndex === index && editingBannerSection === "lifestyleproducts") || (deleting === position && deletingSection === "lifestyleproducts")}
+                          sx={{
+                            backgroundColor: "#d32f2f",
+                            color: "white",
+                            fontSize: "12px",
+                            padding: "6px 16px",
+                            "&:hover": { backgroundColor: "#c62828" },
+                            "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                          }}
+                        >
+                          {(deleting === position && deletingSection === "lifestyleproducts") ? "Deleting..." : "Delete"}
+                        </Button>
+                      )}
+                    </div>
+                    <div style={{
+                      position: "absolute",
+                      top: "10px",
+                      left: "10px",
+                      backgroundColor: "rgba(0, 172, 193, 0.9)",
+                      color: "white",
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                      fontSize: "12px",
+                      fontWeight: "600"
+                    }}>
+                      Banner {position}
+                    </div>
                   </div>
-                  
-                  <div style={{ 
-                    position: "absolute", 
-                    top: "10px", 
-                    left: "10px", 
-                    backgroundColor: "rgba(0, 172, 193, 0.9)", 
-                    color: "white", 
-                    padding: "4px 8px", 
-                    borderRadius: "4px",
-                    fontSize: "12px",
-                    fontWeight: "600"
-                  }}>
-                    Banner {position}
+                  <div style={{ padding: "8px", backgroundColor: "#e0f7fa", borderTop: "1px solid #00acc1" }}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      label="Redirect URL"
+                      placeholder="https://..."
+                      value={slotRedirectUrls[`lifestyleproducts_${index}`] !== undefined ? slotRedirectUrls[`lifestyleproducts_${index}`] : (banner?.redirecturl || "")}
+                      onChange={(e) => setSlotRedirectUrls((prev) => ({ ...prev, [`lifestyleproducts_${index}`]: e.target.value }))}
+                      sx={{ "& .MuiInputBase-root": { fontSize: "12px" }, "zIndex": "1000" }}
+                    />
                   </div>
                 </div>
               );
@@ -1507,9 +1577,9 @@ function ExtraBannerManagement() {
           </div>
 
           {/* Popular Brands Banner Display - 30 Fixed Slots */}
-          <div className="banners-page-top-banners-container" style={{ 
-            display: "grid", 
-            gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", 
+          <div className="banners-page-top-banners-container" style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))",
             gap: "20px",
             borderBottomColor: "#5e35b1"
           }}>
@@ -1517,107 +1587,118 @@ function ExtraBannerManagement() {
               const banner = popularBrandsBanners[index];
               const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
               const position = index + 39; // Positions 39-68
-              
+
               return (
-                <div 
-                  key={index} 
-                  className="banners-page-banner-container" 
-                  style={{ 
-                    position: "relative", 
+                <div
+                  key={index}
+                  className="banners-page-banner-container"
+                  style={{
+                    position: "relative",
                     minHeight: "180px",
                     border: "2px solid #5e35b1",
                     borderRadius: "8px",
                     overflow: "hidden"
                   }}
                 >
-                  {imageUrl ? (
-                    <img 
-                      src={imageUrl} 
-                      alt={`Popular Brands Banner ${position}`}
-                      style={{ width: "100%", height: "auto", display: "block" }}
-                      onError={(e) => {
-                        console.error(`Failed to load image: ${imageUrl}`);
-                        e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
-                      }}
-                    />
-                  ) : (
-                    <div style={{ 
-                      width: "100%", 
-                      height: "180px", 
-                      backgroundColor: "#ede7f6", 
-                      display: "flex", 
-                      alignItems: "center", 
-                      justifyContent: "center",
-                      border: "2px dashed #5e35b1"
+                  <div style={{ position: "relative" }}>
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt={`Popular Brands Banner ${position}`}
+                        style={{ width: "100%", height: "auto", display: "block" }}
+                        onError={(e) => {
+                          console.error(`Failed to load image: ${imageUrl}`);
+                          e.target.src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: "100%",
+                        height: "180px",
+                        backgroundColor: "#ede7f6",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "2px dashed #5e35b1"
+                      }}>
+                        <p style={{ color: "#5e35b1", fontWeight: "500", fontSize: "12px" }}>No Banner</p>
+                      </div>
+                    )}
+                    <div className="banner-hover-buttons" style={{
+                      position: "absolute",
+                      bottom: "10px",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      display: "flex",
+                      gap: "8px",
+                      flexWrap: "wrap",
+                      justifyContent: "center"
                     }}>
-                      <p style={{ color: "#5e35b1", fontWeight: "500", fontSize: "12px" }}>No Banner</p>
-                    </div>
-                  )}
-                  
-                  <div className="banner-hover-buttons" style={{ 
-                    position: "absolute", 
-                    bottom: "10px", 
-                    left: "50%", 
-                    transform: "translateX(-50%)",
-                    display: "flex",
-                    gap: "8px",
-                    flexWrap: "wrap",
-                    justifyContent: "center"
-                  }}>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref={popularBrandsFileInputRefs[index]}
-                      style={{ display: "none" }}
-                      onChange={(e) => handleImageChange(index, e, "popularbrands")}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "popularbrands")}
-                    />
-                    <Button
-                      variant="contained"
-                      onClick={() => popularBrandsFileInputRefs[index].current?.click()}
-                      disabled={uploading || (editingBannerIndex === index && editingBannerSection === "popularbrands")}
-                      sx={{
-                        backgroundColor: "#5e35b1",
-                        color: "white",
-                        fontSize: "11px",
-                        padding: "5px 12px",
-                        "&:hover": { backgroundColor: "#4527a0" },
-                        "&:disabled": { backgroundColor: "#ccc", color: "#666" }
-                      }}
-                    >
-                      {uploading && editingBannerIndex === index && editingBannerSection === "popularbrands" ? "Uploading..." : "Browse"}
-                    </Button>
-                    {banner && (
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={popularBrandsFileInputRefs[index]}
+                        style={{ display: "none" }}
+                        onChange={(e) => handleImageChange(index, e, "popularbrands")}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "popularbrands")}
+                      />
                       <Button
                         variant="contained"
-                        onClick={() => handleDeleteBanner(index, "popularbrands")}
-                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "popularbrands") || (deleting === position && deletingSection === "popularbrands")}
+                        onClick={() => popularBrandsFileInputRefs[index].current?.click()}
+                        disabled={uploading || (editingBannerIndex === index && editingBannerSection === "popularbrands")}
                         sx={{
-                          backgroundColor: "#d32f2f",
+                          backgroundColor: "#5e35b1",
                           color: "white",
                           fontSize: "11px",
                           padding: "5px 12px",
-                          "&:hover": { backgroundColor: "#c62828" },
+                          "&:hover": { backgroundColor: "#4527a0" },
                           "&:disabled": { backgroundColor: "#ccc", color: "#666" }
                         }}
                       >
-                        {(deleting === position && deletingSection === "popularbrands") ? "Deleting..." : "Delete"}
+                        {uploading && editingBannerIndex === index && editingBannerSection === "popularbrands" ? "Uploading..." : "Browse"}
                       </Button>
-                    )}
+                      {banner && (
+                        <Button
+                          variant="contained"
+                          onClick={() => handleDeleteBanner(index, "popularbrands")}
+                          disabled={uploading || (editingBannerIndex === index && editingBannerSection === "popularbrands") || (deleting === position && deletingSection === "popularbrands")}
+                          sx={{
+                            backgroundColor: "#d32f2f",
+                            color: "white",
+                            fontSize: "11px",
+                            padding: "5px 12px",
+                            "&:hover": { backgroundColor: "#c62828" },
+                            "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                          }}
+                        >
+                          {(deleting === position && deletingSection === "popularbrands") ? "Deleting..." : "Delete"}
+                        </Button>
+                      )}
+                    </div>
+                    <div style={{
+                      position: "absolute",
+                      top: "10px",
+                      left: "10px",
+                      backgroundColor: "rgba(94, 53, 177, 0.9)",
+                      color: "white",
+                      padding: "3px 6px",
+                      borderRadius: "4px",
+                      fontSize: "11px",
+                      fontWeight: "600"
+                    }}>
+                      {position}
+                    </div>
                   </div>
-                  
-                  <div style={{ 
-                    position: "absolute", 
-                    top: "10px", 
-                    left: "10px", 
-                    backgroundColor: "rgba(94, 53, 177, 0.9)", 
-                    color: "white", 
-                    padding: "3px 6px", 
-                    borderRadius: "4px",
-                    fontSize: "11px",
-                    fontWeight: "600"
-                  }}>
-                    {position}
+                  <div style={{ padding: "6px 8px", backgroundColor: "#ede7f6", borderTop: "1px solid #5e35b1" }}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      label="Redirect URL"
+                      placeholder="https://..."
+                      value={slotRedirectUrls[`popularbrands_${index}`] !== undefined ? slotRedirectUrls[`popularbrands_${index}`] : (banner?.redirecturl || "")}
+                      onChange={(e) => setSlotRedirectUrls((prev) => ({ ...prev, [`popularbrands_${index}`]: e.target.value }))}
+                      sx={{ "& .MuiInputBase-root": { fontSize: "11px" }, "zIndex": "1000" }}
+                    />
                   </div>
                 </div>
               );
@@ -1665,8 +1746,8 @@ function ExtraBannerManagement() {
           }}>
             Cancel
           </Button>
-          <Button 
-            onClick={handleUpdateBanner} 
+          <Button
+            onClick={handleUpdateBanner}
             variant="contained"
             disabled={updating}
             sx={{

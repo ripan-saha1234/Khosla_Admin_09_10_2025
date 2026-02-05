@@ -44,6 +44,7 @@ function Products() {
     mobile: new Set()
   });
   const [featuredUpdating, setFeaturedUpdating] = useState({});
+  const [latestUpdating, setLatestUpdating] = useState({});
 
 
   async function fetchSearchResults(){
@@ -140,6 +141,7 @@ function Products() {
     // Use specification from specifications API if available, otherwise use product's Specification field
     specification: specificationsMap[product.Model] || product.Specification || "",
     isFeatured: String(product?.is_featured || product?.Is_featured || "false") === "true",
+    isLatest: String(product?.is_latest || product?.Is_latest || "false") === "true",
     images: product.Images ? product.Images.split(',').map(img => {
       // Add base URL if image path is relative
       const trimmedImg = img.trim();
@@ -358,6 +360,52 @@ function Products() {
     });
   };
 
+  // Toggle latest flag for a product
+  const handleLatestToggle = async (product, checked) => {
+    const model = product?.model || product?.Model;
+    if (!model) {
+      alert("Missing product model. Please try again.");
+      return;
+    }
+
+    setLatestUpdating((prev) => ({ ...prev, [product.id]: true }));
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/products/${model}/latest`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_latest: checked ? "true" : "false" })
+      });
+
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.text();
+          if (errorData) {
+            try {
+              const parsedError = JSON.parse(errorData);
+              errorMessage = parsedError.message || parsedError.error || errorMessage;
+            } catch {
+              errorMessage = errorData || errorMessage;
+            }
+          }
+        } catch (parseError) {}
+        throw new Error(errorMessage);
+      }
+
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === product.id ? { ...p, isLatest: checked } : p
+        )
+      );
+    } catch (error) {
+      console.error("Error updating latest status:", error);
+      alert(`Could not update latest status: ${error.message}. Please check the console for details.`);
+    } finally {
+      setLatestUpdating((prev) => ({ ...prev, [product.id]: false }));
+    }
+  };
+
   // Toggle featured flag for a product
   const handleFeaturedToggle = async (product, checked) => {
     const model = product?.model || product?.Model;
@@ -465,7 +513,7 @@ function Products() {
         throw new Error("Failed to fetch categories");
       }
       const data = await res.json();
-      
+      console.log("Categories fetched successfully:", data);
       // Handle the API response structure: { success, count, categories: [...] }
       let categoriesArray = [];
       if (data.categories && Array.isArray(data.categories)) {
@@ -821,7 +869,7 @@ function Products() {
                       e.target.src = 'https://via.placeholder.com/150';
                     }}
                     onLoad={(e) => {
-                      console.log('✅ Image Loaded:', e.target.src);
+                      // console.log('✅ Image Loaded:', e.target.src);
                     }}
                   />
                   <h2>{product?.name}</h2>
@@ -873,6 +921,35 @@ function Products() {
                       }}>
                         Featured
                         {featuredUpdating[product.id] && (
+                          <CircularProgress size={14} sx={{ color: "#ED1B24", marginLeft: "8px" }} />
+                        )}
+                      </label>
+                    </div>
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px"
+                    }}>
+                      <Checkbox
+                        checked={!!product?.isLatest}
+                        disabled={latestUpdating[product.id]}
+                        onChange={(e) => handleLatestToggle(product, e.target.checked)}
+                        sx={{
+                          color: "#ED1B24",
+                          '&.Mui-checked': {
+                            color: "#ED1B24",
+                          },
+                          padding: "4px"
+                        }}
+                      />
+                      <label style={{
+                        fontSize: "13px",
+                        fontWeight: "500",
+                        cursor: "pointer",
+                        userSelect: "none"
+                      }}>
+                        Latest
+                        {latestUpdating[product.id] && (
                           <CircularProgress size={14} sx={{ color: "#ED1B24", marginLeft: "8px" }} />
                         )}
                       </label>
@@ -1639,7 +1716,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, A
       </DialogContent>
       <DialogActions>
         <Button onClick={handleSubmit} variant="contained" color="primary" sx={{ backgroundColor: "black" }}>
-          {product ? "Edit" : "Add"}
+          {product ? "Save" : "Add"}
         </Button>
         <Button onClick={handleOnClose}>Cancel</Button>
       </DialogActions>

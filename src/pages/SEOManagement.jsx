@@ -48,7 +48,7 @@ function SEOManagement() {
   const [deleting, setDeleting] = useState(false);
 
   const baseUrl = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev";
-
+  
   // Static Routes
   const staticRoutes = [
     { value: "/", label: "Home" },
@@ -80,8 +80,10 @@ function SEOManagement() {
     { value: "/my-account/account-details", label: "Account Details" }
   ];
 
-  // All page options combined
-  const allPageOptions = [...staticRoutes, ...nestedRoutes];
+  const [nestedRoutesWithCategories, setNestedRoutesWithCategories] = useState([]);
+
+  // All page options combined (static + my-account nested + category routes)
+  const allPageOptions = [...staticRoutes, ...nestedRoutes, ...nestedRoutesWithCategories];
 
   // Parse response body (it's a stringified JSON)
   const parseResponseBody = (response) => {
@@ -175,6 +177,39 @@ function SEOManagement() {
       setCurrentRecordId(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // fetch categories from API
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get(`${baseUrl}/categories`);
+      const data = response.data;
+      console.log("Categories fetched successfully:", data);
+      // Handle the API response structure: { success, count, categories: [...] }
+      let categoriesArray = [];
+      if (data.categories && Array.isArray(data.categories)) {
+        categoriesArray = data.categories;
+      } else if (Array.isArray(data)) {
+        categoriesArray = data;
+      } else if (data.data && Array.isArray(data.data)) {
+        categoriesArray = data.data;
+      } else {
+        return [];
+      }
+      // Transform to dropdown format { value, label } (same as products.jsx)
+      const transformedCategories = categoriesArray.map((category) => {
+        if (typeof category === "string") {
+          return { value: category, label: category };
+        }
+        const value = category.value || category.id || category.category_id || category.name || category.category || "";
+        const label = category.label || category.name || category.category_name || category.category || value;
+        return { value: String(value), label: String(label) };
+      });
+      return transformedCategories;
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+      return [];
     }
   };
 
@@ -316,9 +351,21 @@ function SEOManagement() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPage]);
 
-  // Load all records on mount
+  // Load all records on mount; build category nested routes from API
   useEffect(() => {
-    fetchAllRecords();
+    const fetching = async () => {
+      const [categories, records] = await Promise.all([fetchCategories(), fetchAllRecords()]);
+      console.log("Categories fetched successfully:", categories);
+      console.log("Records fetched successfully:", records);
+      // Form nested routes for categories: { value: path, label } like nestedRoutes (e.g. /category/Electronics)
+      const nestedRoutesForCategories = (categories || []).map((cat) => ({
+        value: `/category/${encodeURIComponent(cat.value)}`,
+        label: cat.label
+      }));
+      console.log("Nested routes for categories:", nestedRoutesForCategories);
+      setNestedRoutesWithCategories(nestedRoutesForCategories);
+    };
+    fetching();
   }, []);
 
   const handleFieldChange = (field, value) => {
@@ -496,6 +543,12 @@ function SEOManagement() {
             ))}
             <ListSubheader>My Account Routes</ListSubheader>
             {nestedRoutes.map((option) => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+            <ListSubheader>Category Routes</ListSubheader>
+            {nestedRoutesWithCategories.map((option) => (
               <MenuItem key={option.value} value={option.value}>
                 {option.label}
               </MenuItem>

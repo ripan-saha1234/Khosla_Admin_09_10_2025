@@ -70,6 +70,10 @@ function CommonLayout() {
             setLinkSelected("youtube-video");
             navigate("/admin-panel/youtube-video");
           }}>Youtube Video</button>
+          <button className={linkSelected === "stats-management"?"selected":""} onClick={()=>{
+            setLinkSelected("stats-management");
+            navigate("/admin-panel/stats-management");
+          }}>Stats Management</button>
           <button className={linkSelected === "offer-management"?"selected":""} onClick={()=>{
             setLinkSelected("offer-management");
             navigate("/admin-panel/offer-management");
