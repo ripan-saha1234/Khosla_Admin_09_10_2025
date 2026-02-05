@@ -26,6 +26,9 @@ function ExtraBannerManagement() {
   const [deletingSection, setDeletingSection] = useState(null); // Track which section is being deleted
   // Per-slot redirect URL (key: "section_index", e.g. "extra_0") - used when uploading and shown in input
   const [slotRedirectUrls, setSlotRedirectUrls] = useState({});
+  // Pending S3 uploads per slot: do not call upsert until user fills redirect URL and clicks Save
+  const [pendingSlotUploads, setPendingSlotUploads] = useState({});
+  const [savingSlot, setSavingSlot] = useState(null); // "section_index" when saving that slot
   const fileInputRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
   const bestSellersFileInputRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
   const entertainmentFileInputRefs = [useRef(null), useRef(null), useRef(null), useRef(null)];
@@ -375,6 +378,10 @@ function ExtraBannerManagement() {
   // =================== HANDLE UPDATE BANNER ===================
   const handleUpdateBanner = async () => {
     if (!editingBanner) return;
+    if (!editFormData.redirecturl?.trim()) {
+      alert("Please enter Redirect URL before saving.");
+      return;
+    }
 
     try {
       setUpdating(true);
@@ -385,7 +392,7 @@ function ExtraBannerManagement() {
         position,
         imageurl,
         editFormData.description,
-        editFormData.redirecturl,
+        editFormData.redirecturl.trim(),
         editFormData.text
       );
 
@@ -454,6 +461,14 @@ function ExtraBannerManagement() {
 
       await deleteBanner(position);
 
+      // Clear any pending upload for this slot
+      const slotKey = `${section}_${index}`;
+      setPendingSlotUploads((prev) => {
+        const next = { ...prev };
+        delete next[slotKey];
+        return next;
+      });
+
       // Refresh banners from API
       await fetchBannersFromDatabase();
 
@@ -481,47 +496,10 @@ function ExtraBannerManagement() {
       // Step 1 & 2: Upload file to S3 (gets presigned URL and uploads)
       const uploadResult = await uploadFileToS3(file);
 
-      // Step 3: Upsert banner with position, imageurl, and default metadata
-      let position, currentBanner;
-
-      if (section === "bestsellers") {
-        position = index + 10; // Positions 10-14
-        currentBanner = bestSellersBanners[index];
-      } else if (section === "entertainment") {
-        position = index + 15; // Positions 15-18
-        currentBanner = entertainmentBanners[index];
-      } else if (section === "appliances") {
-        position = index + 19; // Positions 19-22
-        currentBanner = appliancesBanners[index];
-      } else if (section === "digitalproducts") {
-        position = index + 23; // Positions 23-26
-        currentBanner = digitalProductsBanners[index];
-      } else if (section === "kitchenappliances") {
-        position = index + 27; // Positions 27-34
-        currentBanner = kitchenAppliancesBanners[index];
-      } else if (section === "lifestyleproducts") {
-        position = index + 35; // Positions 35-38
-        currentBanner = lifestyleProductsBanners[index];
-      } else if (section === "popularbrands") {
-        position = index + 39; // Positions 39-68
-        currentBanner = popularBrandsBanners[index];
-      } else {
-        position = index + 1; // Positions 1-9
-        currentBanner = banners[index];
-      }
-
-      // Use slot input value first, then existing banner metadata, then empty
+      // Store pending upload; do NOT call upsert until user enters redirect URL and clicks Save
       const slotKey = `${section}_${index}`;
-      const description = currentBanner?.description || "";
-      const redirecturl = (slotRedirectUrls[slotKey] !== undefined ? slotRedirectUrls[slotKey] : (currentBanner?.redirecturl || "")) || "";
-      const text = currentBanner?.text || "";
-
-      await upsertBanner(position, uploadResult.fileUrl, description, redirecturl, text);
-
-      // Refresh banners from API
-      await fetchBannersFromDatabase();
-
-      alert("Banner updated successfully!");
+      setPendingSlotUploads((prev) => ({ ...prev, [slotKey]: { fileUrl: uploadResult.fileUrl } }));
+      alert("Image uploaded. Enter Redirect URL and click Save to submit.");
 
     } catch (err) {
       console.error("Error updating banner:", err);
@@ -564,6 +542,60 @@ function ExtraBannerManagement() {
           fileInputRefs[index].current.value = "";
         }
       }
+    }
+  };
+
+  // =================== SAVE SLOT (image + redirect URL required) ===================
+  const getBannerAndPosition = (section, index) => {
+    if (section === "bestsellers") return { banner: bestSellersBanners[index], position: index + 10 };
+    if (section === "entertainment") return { banner: entertainmentBanners[index], position: index + 15 };
+    if (section === "appliances") return { banner: appliancesBanners[index], position: index + 19 };
+    if (section === "digitalproducts") return { banner: digitalProductsBanners[index], position: index + 23 };
+    if (section === "kitchenappliances") return { banner: kitchenAppliancesBanners[index], position: index + 27 };
+    if (section === "lifestyleproducts") return { banner: lifestyleProductsBanners[index], position: index + 35 };
+    if (section === "popularbrands") return { banner: popularBrandsBanners[index], position: index + 39 };
+    return { banner: banners[index], position: index + 1 };
+  };
+
+  const handleSaveSlot = async (section, index) => {
+    const slotKey = `${section}_${index}`;
+    const { banner, position } = getBannerAndPosition(section, index);
+    const redirecturl = (slotRedirectUrls[slotKey] !== undefined ? slotRedirectUrls[slotKey] : (banner?.redirecturl || "")) || "";
+    const pending = pendingSlotUploads[slotKey];
+
+    if (!redirecturl.trim()) {
+      alert("Please enter Redirect URL before saving.");
+      return;
+    }
+    if (!pending && !banner) {
+      alert("Please upload an image first.");
+      return;
+    }
+
+    try {
+      setSavingSlot(slotKey);
+      const description = banner?.description || "";
+      const text = banner?.text || "";
+
+      if (pending) {
+        await upsertBanner(position, pending.fileUrl, description, redirecturl.trim(), text);
+        setPendingSlotUploads((prev) => {
+          const next = { ...prev };
+          delete next[slotKey];
+          return next;
+        });
+      } else {
+        const imageurl = banner?.imageurl || banner?.largeImageURL || banner?.url || "";
+        await updateBanner(position, imageurl, description, redirecturl.trim(), text);
+      }
+
+      await fetchBannersFromDatabase();
+      alert("Banner saved successfully!");
+    } catch (err) {
+      console.error("Error saving banner:", err);
+      alert(`Failed to save: ${err.message}`);
+    } finally {
+      setSavingSlot(null);
     }
   };
 
@@ -625,8 +657,9 @@ function ExtraBannerManagement() {
           <div className="banners-page-top-banners-container" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "20px" }}>
             {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((index) => {
               const banner = banners[index];
-              // Handle both new API format (imageurl) and old format (largeImageURL, url)
-              const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
+              const slotKey = `extra_${index}`;
+              // Show pending upload first, then saved banner
+              const imageUrl = pendingSlotUploads[slotKey]?.fileUrl || banner?.imageurl || banner?.largeImageURL || banner?.url || null;
               const bannerId = banner?.id || banner?.sliderId;
 
               return (
@@ -687,6 +720,21 @@ function ExtraBannerManagement() {
                         }}
                       >
                         {uploading && editingBannerIndex === index && editingBannerSection === "extra" ? "Uploading..." : "Browse Image"}
+                      </Button>
+                      <Button
+                        variant="contained"
+                        onClick={() => handleSaveSlot("extra", index)}
+                        disabled={uploading || (savingSlot === `extra_${index}`) || (editingBannerIndex === index && editingBannerSection === "extra")}
+                        sx={{
+                          backgroundColor: "#2e7d32",
+                          color: "white",
+                          fontSize: "12px",
+                          padding: "6px 16px",
+                          "&:hover": { backgroundColor: "#1b5e20" },
+                          "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                        }}
+                      >
+                        {savingSlot === `extra_${index}` ? "Saving..." : "Save"}
                       </Button>
                       {banner && (
                         <>
@@ -755,8 +803,8 @@ function ExtraBannerManagement() {
           }}>
             {[0, 1, 2, 3, 4].map((index) => {
               const banner = bestSellersBanners[index];
-              // Handle both new API format (imageurl) and old format (largeImageURL, url)
-              const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
+              const slotKey = `bestsellers_${index}`;
+              const imageUrl = pendingSlotUploads[slotKey]?.fileUrl || banner?.imageurl || banner?.largeImageURL || banner?.url || null;
               const bannerId = banner?.id || banner?.sliderId;
               const position = index + 10; // Positions 10-14
 
@@ -829,6 +877,21 @@ function ExtraBannerManagement() {
                       >
                         {uploading && editingBannerIndex === index && editingBannerSection === "bestsellers" ? "Uploading..." : "Browse Image"}
                       </Button>
+                      <Button
+                        variant="contained"
+                        onClick={() => handleSaveSlot("bestsellers", index)}
+                        disabled={uploading || (savingSlot === `bestsellers_${index}`) || (editingBannerIndex === index && editingBannerSection === "bestsellers")}
+                        sx={{
+                          backgroundColor: "#2e7d32",
+                          color: "white",
+                          fontSize: "12px",
+                          padding: "6px 16px",
+                          "&:hover": { backgroundColor: "#1b5e20" },
+                          "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                        }}
+                      >
+                        {savingSlot === `bestsellers_${index}` ? "Saving..." : "Save"}
+                      </Button>
                       {banner && (
                         <Button
                           variant="contained"
@@ -895,7 +958,8 @@ function ExtraBannerManagement() {
           }}>
             {[0, 1, 2, 3].map((index) => {
               const banner = entertainmentBanners[index];
-              const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
+              const slotKey = `entertainment_${index}`;
+              const imageUrl = pendingSlotUploads[slotKey]?.fileUrl || banner?.imageurl || banner?.largeImageURL || banner?.url || null;
               const position = index + 15; // Positions 15-18
 
               return (
@@ -967,6 +1031,21 @@ function ExtraBannerManagement() {
                       >
                         {uploading && editingBannerIndex === index && editingBannerSection === "entertainment" ? "Uploading..." : "Browse Image"}
                       </Button>
+                      <Button
+                        variant="contained"
+                        onClick={() => handleSaveSlot("entertainment", index)}
+                        disabled={uploading || (savingSlot === `entertainment_${index}`) || (editingBannerIndex === index && editingBannerSection === "entertainment")}
+                        sx={{
+                          backgroundColor: "#2e7d32",
+                          color: "white",
+                          fontSize: "12px",
+                          padding: "6px 16px",
+                          "&:hover": { backgroundColor: "#1b5e20" },
+                          "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                        }}
+                      >
+                        {savingSlot === `entertainment_${index}` ? "Saving..." : "Save"}
+                      </Button>
                       {banner && (
                         <Button
                           variant="contained"
@@ -1033,7 +1112,8 @@ function ExtraBannerManagement() {
           }}>
             {[0, 1, 2, 3].map((index) => {
               const banner = appliancesBanners[index];
-              const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
+              const slotKey = `appliances_${index}`;
+              const imageUrl = pendingSlotUploads[slotKey]?.fileUrl || banner?.imageurl || banner?.largeImageURL || banner?.url || null;
               const position = index + 19; // Positions 19-22
 
               return (
@@ -1104,6 +1184,21 @@ function ExtraBannerManagement() {
                         }}
                       >
                         {uploading && editingBannerIndex === index && editingBannerSection === "appliances" ? "Uploading..." : "Browse Image"}
+                      </Button>
+                      <Button
+                        variant="contained"
+                        onClick={() => handleSaveSlot("appliances", index)}
+                        disabled={uploading || (savingSlot === `appliances_${index}`) || (editingBannerIndex === index && editingBannerSection === "appliances")}
+                        sx={{
+                          backgroundColor: "#2e7d32",
+                          color: "white",
+                          fontSize: "12px",
+                          padding: "6px 16px",
+                          "&:hover": { backgroundColor: "#1b5e20" },
+                          "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                        }}
+                      >
+                        {savingSlot === `appliances_${index}` ? "Saving..." : "Save"}
                       </Button>
                       {banner && (
                         <Button
@@ -1243,6 +1338,21 @@ function ExtraBannerManagement() {
                       >
                         {uploading && editingBannerIndex === index && editingBannerSection === "digitalproducts" ? "Uploading..." : "Browse Image"}
                       </Button>
+                      <Button
+                        variant="contained"
+                        onClick={() => handleSaveSlot("digitalproducts", index)}
+                        disabled={uploading || (savingSlot === `digitalproducts_${index}`) || (editingBannerIndex === index && editingBannerSection === "digitalproducts")}
+                        sx={{
+                          backgroundColor: "#2e7d32",
+                          color: "white",
+                          fontSize: "12px",
+                          padding: "6px 16px",
+                          "&:hover": { backgroundColor: "#1b5e20" },
+                          "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                        }}
+                      >
+                        {savingSlot === `digitalproducts_${index}` ? "Saving..." : "Save"}
+                      </Button>
                       {banner && (
                         <Button
                           variant="contained"
@@ -1309,7 +1419,8 @@ function ExtraBannerManagement() {
           }}>
             {[0, 1, 2, 3, 4, 5, 6, 7].map((index) => {
               const banner = kitchenAppliancesBanners[index];
-              const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
+              const slotKey = `kitchenappliances_${index}`;
+              const imageUrl = pendingSlotUploads[slotKey]?.fileUrl || banner?.imageurl || banner?.largeImageURL || banner?.url || null;
               const position = index + 27; // Positions 27-34
 
               return (
@@ -1381,6 +1492,21 @@ function ExtraBannerManagement() {
                       >
                         {uploading && editingBannerIndex === index && editingBannerSection === "kitchenappliances" ? "Uploading..." : "Browse Image"}
                       </Button>
+                      <Button
+                        variant="contained"
+                        onClick={() => handleSaveSlot("kitchenappliances", index)}
+                        disabled={uploading || (savingSlot === `kitchenappliances_${index}`) || (editingBannerIndex === index && editingBannerSection === "kitchenappliances")}
+                        sx={{
+                          backgroundColor: "#2e7d32",
+                          color: "white",
+                          fontSize: "12px",
+                          padding: "6px 16px",
+                          "&:hover": { backgroundColor: "#1b5e20" },
+                          "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                        }}
+                      >
+                        {savingSlot === `kitchenappliances_${index}` ? "Saving..." : "Save"}
+                      </Button>
                       {banner && (
                         <Button
                           variant="contained"
@@ -1447,7 +1573,8 @@ function ExtraBannerManagement() {
           }}>
             {[0, 1, 2, 3].map((index) => {
               const banner = lifestyleProductsBanners[index];
-              const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
+              const slotKey = `lifestyleproducts_${index}`;
+              const imageUrl = pendingSlotUploads[slotKey]?.fileUrl || banner?.imageurl || banner?.largeImageURL || banner?.url || null;
               const position = index + 35; // Positions 35-38
 
               return (
@@ -1519,6 +1646,21 @@ function ExtraBannerManagement() {
                       >
                         {uploading && editingBannerIndex === index && editingBannerSection === "lifestyleproducts" ? "Uploading..." : "Browse Image"}
                       </Button>
+                      <Button
+                        variant="contained"
+                        onClick={() => handleSaveSlot("lifestyleproducts", index)}
+                        disabled={uploading || (savingSlot === `lifestyleproducts_${index}`) || (editingBannerIndex === index && editingBannerSection === "lifestyleproducts")}
+                        sx={{
+                          backgroundColor: "#2e7d32",
+                          color: "white",
+                          fontSize: "12px",
+                          padding: "6px 16px",
+                          "&:hover": { backgroundColor: "#1b5e20" },
+                          "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                        }}
+                      >
+                        {savingSlot === `lifestyleproducts_${index}` ? "Saving..." : "Save"}
+                      </Button>
                       {banner && (
                         <Button
                           variant="contained"
@@ -1585,7 +1727,8 @@ function ExtraBannerManagement() {
           }}>
             {Array.from({ length: 30 }, (_, index) => {
               const banner = popularBrandsBanners[index];
-              const imageUrl = banner?.imageurl || banner?.largeImageURL || banner?.url || null;
+              const slotKey = `popularbrands_${index}`;
+              const imageUrl = pendingSlotUploads[slotKey]?.fileUrl || banner?.imageurl || banner?.largeImageURL || banner?.url || null;
               const position = index + 39; // Positions 39-68
 
               return (
@@ -1656,6 +1799,21 @@ function ExtraBannerManagement() {
                         }}
                       >
                         {uploading && editingBannerIndex === index && editingBannerSection === "popularbrands" ? "Uploading..." : "Browse"}
+                      </Button>
+                      <Button
+                        variant="contained"
+                        onClick={() => handleSaveSlot("popularbrands", index)}
+                        disabled={uploading || (savingSlot === `popularbrands_${index}`) || (editingBannerIndex === index && editingBannerSection === "popularbrands")}
+                        sx={{
+                          backgroundColor: "#2e7d32",
+                          color: "white",
+                          fontSize: "11px",
+                          padding: "5px 12px",
+                          "&:hover": { backgroundColor: "#1b5e20" },
+                          "&:disabled": { backgroundColor: "#ccc", color: "#666" }
+                        }}
+                      >
+                        {savingSlot === `popularbrands_${index}` ? "Saving..." : "Save"}
                       </Button>
                       {banner && (
                         <Button
