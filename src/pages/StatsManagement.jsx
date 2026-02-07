@@ -12,7 +12,7 @@ import {
   FormControlLabel,
 } from "@mui/material";
 
-const API_BASE_URL = ""; // Add your API base URL here
+const API_BASE_URL = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev"; // Add your API base URL here
 
 const initialFormState = {
   yearsOfExcellence: "",
@@ -29,6 +29,7 @@ const initialCheckboxState = {
 };
 
 function StatsManagement() {
+  const [statsId, setStatsId] = useState(null);
   const [formData, setFormData] = useState(initialFormState);
   const [showPlus, setShowPlus] = useState(initialCheckboxState);
   const [loading, setLoading] = useState(false);
@@ -43,8 +44,15 @@ function StatsManagement() {
     setLoading(true);
     setMessage({ type: "", text: "" });
     try {
-      const response = await axios.get(`${API_BASE_URL}/stats`); // Adjust endpoint as needed
-      const data = response.data?.data ?? response.data ?? {};
+      const response = await axios.get(`${API_BASE_URL}/stats/1`);
+      let raw = response.data;
+      // Handle array response (e.g. [{ id, ... }]) – use first item
+      if (Array.isArray(raw) && raw.length > 0) {
+        raw = raw[0];
+      }
+      // Handle wrapped response (e.g. { data: {...} } or { body: {...} })
+      const data = raw?.data ?? raw?.body ?? raw ?? {};
+      setStatsId(1);
       setFormData({
         yearsOfExcellence: String(data.yearsOfExcellence ?? data.years_of_excellence ?? ""),
         stores: String(data.stores ?? ""),
@@ -98,7 +106,7 @@ function StatsManagement() {
     setSaving(true);
     setMessage({ type: "", text: "" });
     try {
-      await axios.post(`${API_BASE_URL}/stats`, {
+      const payload = {
         yearsOfExcellence: yearsOfExcellence.trim(),
         stores: stores.trim(),
         locations: locations.trim(),
@@ -107,12 +115,17 @@ function StatsManagement() {
         showPlusStores: showPlus.showPlusStores,
         showPlusLocations: showPlus.showPlusLocations,
         showPlusProducts: showPlus.showPlusProducts,
+      };
+      await axios.put(`${API_BASE_URL}/stats/1`, payload, {
+        headers: { "Content-Type": "application/json" },
       });
       setMessage({ type: "success", text: "Stats saved successfully!" });
     } catch (error) {
       console.error("Error saving stats:", error);
-      const errorMsg =
-        error.response?.data?.message || error.message || "Failed to save stats. Please try again.";
+      const isNetworkError = error.message === "Network Error" || !error.response;
+      const errorMsg = isNetworkError
+        ? "Network Error: Check if the API allows PUT from this origin (CORS) and that the server is reachable."
+        : error.response?.data?.message || error.message || "Failed to save stats. Please try again.";
       setMessage({ type: "error", text: errorMsg });
     } finally {
       setSaving(false);
