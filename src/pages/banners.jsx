@@ -516,9 +516,10 @@ function Banners() {
   const [isImagesSubmitted, setIsImagesSubmitted] = useState(false);
   const [uploading, setUploading] = useState(false);
   
-  // Field and value for each upload slot
+  // Field, value and redirect URL for each upload slot
   const [uploadFields, setUploadFields] = useState(["", "", "", "", "", ""]);
   const [uploadValues, setUploadValues] = useState(["", "", "", "", "", ""]);
+  const [uploadRedirectUrls, setUploadRedirectUrls] = useState(["", "", "", "", "", ""]);
 
   const fileInputRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
   
@@ -528,22 +529,27 @@ function Banners() {
   const [editBannerPreview, setEditBannerPreview] = useState("");
   const [editBannerField, setEditBannerField] = useState("");
   const [editBannerValue, setEditBannerValue] = useState("");
+  const [editBannerRedirectUrl, setEditBannerRedirectUrl] = useState("");
   const editFileInputRef = useRef(null);
   const uploadSectionRef = useRef(null);
 
   const baseUrl = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev"; // 🔹 Replace with your actual API base URL
 
   // ======== SAVE BANNER TO DATABASE ========
-  const saveBannerToDatabase = async (fileUrl, tableType, field = "homepage", value = "banner1") => {
+  const saveBannerToDatabase = async (fileUrl, tableType, field = "homepage", value = "banner1", redirectUrl = "") => {
     try {
-      console.log("Saving banner to database:", fileUrl, tableType, field, value);
+      console.log("Saving banner to database:", fileUrl, tableType, field, value, redirectUrl);
       
-      const response = await axios.post(`${baseUrl}/slider?tableType=${tableType}`, {
+      const payload = {
         tableType: tableType,
         largeImageURL: fileUrl,
         field: field || "homepage",
         value: value || "banner1"
-      });
+      };
+      if (redirectUrl && redirectUrl.trim() !== "") {
+        payload.redirectUrl = redirectUrl.trim();
+      }
+      const response = await axios.post(`${baseUrl}/slider?tableType=${tableType}`, payload);
       
       console.log("Banner saved to database:", response.data);
       return response.data;
@@ -555,16 +561,20 @@ function Banners() {
   };
 
   // ======== UPDATE BANNER IN DATABASE ========
-  const updateBannerInDatabase = async (fileUrl, tableType, sliderId, field = "homepage", value = "banner1") => {
+  const updateBannerInDatabase = async (fileUrl, tableType, sliderId, field = "homepage", value = "banner1", redirectUrl = "") => {
     try {
-      console.log("Updating banner in database:", fileUrl, tableType, sliderId);
+      console.log("Updating banner in database:", fileUrl, tableType, sliderId, redirectUrl);
       
-      const response = await axios.put(`${baseUrl}/slider/${sliderId}?tableType=${tableType}`, {
+      const payload = {
         tableType: tableType,
         largeImageURL: fileUrl,
         field: field,
         value: value
-      });
+      };
+      if (redirectUrl !== undefined && redirectUrl !== null) {
+        payload.redirectUrl = redirectUrl.trim ? redirectUrl.trim() : String(redirectUrl).trim();
+      }
+      const response = await axios.put(`${baseUrl}/slider/${sliderId}?tableType=${tableType}`, payload);
       
       console.log("Banner updated in database:", response.data);
       return response.data;
@@ -608,7 +618,7 @@ function Banners() {
   };
 
   // ======== HANDLE UPLOAD FILE LOGIC (Presigned URL) ========
-  const uploadFileToS3 = async (file, tableType, skipDatabaseSave = false, field = "homepage", value = "banner1") => {
+  const uploadFileToS3 = async (file, tableType, skipDatabaseSave = false, field = "homepage", value = "banner1", redirectUrl = "") => {
     try {
       console.log("Starting upload for file:", file.name, "Type:", tableType);
       
@@ -662,7 +672,7 @@ function Banners() {
       
       // Step 3: Save banner info to database (skip if updating existing banner)
       if (!skipDatabaseSave) {
-        const savedBanner = await saveBannerToDatabase(fileUrl, tableType, field, value);
+        const savedBanner = await saveBannerToDatabase(fileUrl, tableType, field, value, redirectUrl);
         return { fileUrl, sliderId: savedBanner.sliderId || savedBanner.id };
       }
       
@@ -738,7 +748,8 @@ function Banners() {
         if (file !== null) {
           const field = uploadFields[i] || "homepage";
           const value = uploadValues[i] || "banner1";
-          const result = await uploadFileToS3(file, activeTab, false, field, value);
+          const redirectUrl = uploadRedirectUrls[i] || "";
+          const result = await uploadFileToS3(file, activeTab, false, field, value, redirectUrl);
           uploadedBanners.push({
             id: Date.now() + Math.random(), // Generate unique ID
             url: result.fileUrl,
@@ -765,6 +776,7 @@ function Banners() {
         setImagePreviewUrls(["", "", "", "", "", ""]);
         setUploadFields(["", "", "", "", "", ""]);
         setUploadValues(["", "", "", "", "", ""]);
+        setUploadRedirectUrls(["", "", "", "", "", ""]);
         setIsImagesSubmitted(false);
       }, 2000);
     } catch (error) {
@@ -816,6 +828,8 @@ function Banners() {
     setEditBannerPreview(imageUrl);
     setEditBannerField(currentBanner.field || "");
     setEditBannerValue(currentBanner.value || "");
+    setEditBannerRedirectUrl(currentBanner.redirectUrl ?? currentBanner.redirect_url ?? "");
+
     setShowEditDialog(true);
   };
 
@@ -852,12 +866,13 @@ function Banners() {
         imageUrl = uploadResult.fileUrl;
       }
       
-      // Get field and value (use updated values or keep existing ones)
+      // Get field, value and redirect URL (use updated values or keep existing ones)
       const field = editBannerField || currentBanner.field || "homepage";
       const value = editBannerValue || currentBanner.value || "banner1";
+      const redirectUrl = editBannerRedirectUrl ?? currentBanner.redirectUrl ?? currentBanner.redirect_url ?? "";
       
-      // Update banner in database with new or existing image URL and updated field/value
-      await updateBannerInDatabase(imageUrl, activeTab, bannerId, field, value);
+      // Update banner in database with new or existing image URL and updated field/value/redirectUrl
+      await updateBannerInDatabase(imageUrl, activeTab, bannerId, field, value, redirectUrl);
 
       // Banner updated in database via API - refresh from API
       alert("Banner updated successfully!");
@@ -867,6 +882,7 @@ function Banners() {
       setEditBannerPreview("");
       setEditBannerField("");
       setEditBannerValue("");
+      setEditBannerRedirectUrl("");
       
       // Refresh banners from API
       const banners = await fetchBannersFromDatabase(activeTab);
@@ -914,6 +930,7 @@ function Banners() {
     setImagePreviewUrls(["", "", "", "", "", ""]);
     setUploadFields(["", "", "", "", "", ""]);
     setUploadValues(["", "", "", "", "", ""]);
+    setUploadRedirectUrls(["", "", "", "", "", ""]);
     setIsImagesSubmitted(false);
   };
 
@@ -1099,6 +1116,31 @@ function Banners() {
                       }}
                     />
                   </div>
+
+                  {/* Redirect URL */}
+                  <div style={{ marginTop: "10px" }}>
+                    <label style={{ display: "block", marginBottom: "5px", fontSize: "12px", fontWeight: "500" }}>
+                      Redirect URL:
+                    </label>
+                    <input
+                      type="url"
+                      value={uploadRedirectUrls[index]}
+                      onChange={(e) => {
+                        const newUrls = [...uploadRedirectUrls];
+                        newUrls[index] = e.target.value;
+                        setUploadRedirectUrls(newUrls);
+                      }}
+                      placeholder="https://example.com/page"
+                      style={{
+                        width: "100%",
+                        padding: "8px",
+                        border: "1px solid #ddd",
+                        borderRadius: "4px",
+                        fontSize: "14px",
+                        boxSizing: "border-box"
+                      }}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
@@ -1202,6 +1244,27 @@ function Banners() {
                 value={editBannerValue}
                 onChange={(e) => setEditBannerValue(e.target.value)}
                 placeholder="Enter value"
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  boxSizing: "border-box"
+                }}
+              />
+            </div>
+
+            {/* Redirect URL */}
+            <div style={{ marginTop: "15px", textAlign: "left" }}>
+              <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: "500" }}>
+                Redirect URL:
+              </label>
+              <input
+                type="url"
+                value={editBannerRedirectUrl}
+                onChange={(e) => setEditBannerRedirectUrl(e.target.value)}
+                placeholder="https://example.com/page"
                 style={{
                   width: "100%",
                   padding: "10px",

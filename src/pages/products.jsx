@@ -1752,55 +1752,148 @@ function AddBulkProductDialog({ open, onClose, onSubmit }) {
   );
 }
 
+// Helpers for SpecificationDialog: convert specification string <-> key/value pairs
+function parseSpecStringToPairs(specStr) {
+  if (!specStr || typeof specStr !== "string") return [];
+  const trimmed = specStr.trim();
+  if (!trimmed) return [];
+
+  let obj = null;
+
+  // Try to parse as JSON first
+  try {
+    obj = JSON.parse(trimmed);
+  } catch {
+    // Try Python-like dict -> JSON by replacing single quotes
+    try {
+      const asJson = trimmed.replace(/'/g, '"');
+      obj = JSON.parse(asJson);
+    } catch {
+      obj = null;
+    }
+  }
+
+  const decodeValue = (value) => {
+    let str = String(value ?? "");
+    // Decode common artifacts like \u200e and line breaks
+    str = str.replace(/\u200e/g, "");
+    str = str.replace(/\\n/g, " ");
+    str = str.replace(/\n/g, " ");
+    return str.trim();
+  };
+
+  const pairs = [];
+
+  if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+    Object.entries(obj).forEach(([key, value]) => {
+      const k = String(key || "").trim();
+      const v = decodeValue(value);
+      if (k || v) {
+        pairs.push({ key: k, value: v });
+      }
+    });
+  } else {
+    // Fallback: treat whole string as one value under a generic key
+    pairs.push({ key: "Specification", value: decodeValue(trimmed) });
+  }
+
+  return pairs;
+}
+
+function buildSpecificationStringFromPairs(pairs) {
+  if (!Array.isArray(pairs)) return "";
+
+  const obj = {};
+  pairs.forEach(({ key, value }) => {
+    const k = String(key || "").trim();
+    const v = String(value ?? "").trim();
+    if (!k || (!v && !obj[k])) return;
+    obj[k] = v;
+  });
+
+  const entries = Object.entries(obj);
+  if (!entries.length) return "";
+
+  const parts = entries.map(([k, v]) => {
+    const safeKey = k.replace(/'/g, "\\'");
+    const safeValue = v.replace(/'/g, "\\'");
+    return `'${safeKey}': '${safeValue}'`;
+  });
+
+  return `{${parts.join(", ")}}`;
+}
+
 // 4) SpecificationDialog: For adding/editing/deleting product specifications
 function SpecificationDialog({ open, onClose, product, onSuccess }) {
   const [modelNo, setModelNo] = useState("");
-  const [specification, setSpecification] = useState("");
+  const [specPairs, setSpecPairs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const API_BASE_URL = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev";
 
-  // Update form when product changes
+  // Load specification from product + GET API when dialog opens
   useEffect(() => {
     const loadSpecification = async () => {
-      if (product) {
-        const model = product.model || "";
-        setModelNo(model);
-        
-        // First set from product data
-        let spec = product.specification || "";
-        let hasSpec = !!(spec && spec.trim() !== "");
-        
-        // Try to fetch from specifications API if model exists
-        if (model) {
-          try {
-            const response = await fetch(`${API_BASE_URL}/specifications/${model}`);
-            if (response.ok) {
-              const specData = await response.json();
-              // Handle different response structures
-              const fetchedSpec = specData.Specification || specData.specification || specData.Spec || "";
-              if (fetchedSpec && fetchedSpec.trim() !== "") {
-                spec = fetchedSpec;
-                hasSpec = true;
-              }
-            }
-          } catch (error) {
-            console.warn("Could not fetch specification from API:", error);
-            // Use product specification as fallback
-          }
-        }
-        
-        setSpecification(spec);
-        setIsEditing(hasSpec);
-      } else {
+      if (!open || !product) {
         setModelNo("");
-        setSpecification("");
+        setSpecPairs([]);
         setIsEditing(false);
+        return;
       }
+
+      const model = product.model || "";
+      setModelNo(model);
+
+      // Start with whatever is on the product
+      let specStr = product.specification || "";
+      let hasSpec = !!(specStr && specStr.trim() !== "");
+
+      // Try to fetch from specifications API if model exists
+      if (model) {
+        try {
+          const response = await fetch(`${API_BASE_URL}/specifications/${model}`);
+          if (response.ok) {
+            const specData = await response.json();
+            // Handle response structures like { item: { "Model no": "..", "Specification": "..." } }
+            const item = specData.item || specData.Item || specData.data || specData;
+            const fetchedSpec =
+              item?.Specification ||
+              item?.specification ||
+              item?.Spec ||
+              specData.Specification ||
+              specData.specification ||
+              specData.Spec ||
+              "";
+            if (fetchedSpec && String(fetchedSpec).trim() !== "") {
+              specStr = String(fetchedSpec);
+              hasSpec = true;
+            }
+          }
+        } catch (error) {
+          console.warn("Could not fetch specification from API:", error);
+          // Use product specification as fallback
+        }
+      }
+
+      const pairs = parseSpecStringToPairs(specStr);
+      setSpecPairs(pairs.length ? pairs : [{ key: "", value: "" }]);
+      setIsEditing(hasSpec);
     };
-    
+
     loadSpecification();
-  }, [product]);
+  }, [product, open]);
+
+  const handlePairChange = (index, field, value) => {
+    setSpecPairs((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const handleAddPair = () => {
+    setSpecPairs((prev) => [...prev, { key: "", value: "" }]);
+  };
 
   const handleSubmit = async () => {
     if (!modelNo.trim()) {
@@ -1808,6 +1901,16 @@ function SpecificationDialog({ open, onClose, product, onSuccess }) {
       return;
     }
 
+    const nonEmptyPairs = specPairs.filter(
+      (p) => (p.key && p.key.trim() !== "") || (p.value && String(p.value).trim() !== "")
+    );
+
+    if (!nonEmptyPairs.length) {
+      alert("At least one specification field is required!");
+      return;
+    }
+
+    const specification = buildSpecificationStringFromPairs(nonEmptyPairs);
     if (!specification.trim()) {
       alert("Specification is required!");
       return;
@@ -1894,19 +1997,39 @@ function SpecificationDialog({ open, onClose, product, onSuccess }) {
           fullWidth
           value={modelNo}
           onChange={(e) => setModelNo(e.target.value)}
-          disabled={isEditing} // Disable model number when editing
+          // Allow editing model as well if needed
           required
         />
-        <TextField
-          margin="normal"
-          label="Specification"
-          fullWidth
-          multiline
-          rows={6}
-          value={specification}
-          onChange={(e) => setSpecification(e.target.value)}
-          required
-        />
+
+        {/* Dynamic key/value fields built from GET response */}
+        {specPairs.map((pair, index) => (
+          <div
+            key={index}
+            style={{ display: "flex", gap: "12px", marginTop: index === 0 ? 16 : 8 }}
+          >
+            <TextField
+              label="Field name"
+              fullWidth
+              value={pair.key}
+              onChange={(e) => handlePairChange(index, "key", e.target.value)}
+            />
+            <TextField
+              label="Field value"
+              fullWidth
+              value={pair.value}
+              onChange={(e) => handlePairChange(index, "value", e.target.value)}
+            />
+          </div>
+        ))}
+
+        <Button
+          onClick={handleAddPair}
+          size="small"
+          variant="outlined"
+          sx={{ marginTop: 2 }}
+        >
+          Add more
+        </Button>
       </DialogContent>
       <DialogActions>
         {isEditing && (
@@ -1930,7 +2053,7 @@ function SpecificationDialog({ open, onClose, product, onSuccess }) {
           disabled={loading}
           sx={{ backgroundColor: "black" }}
         >
-          {loading ? (isEditing ? "Updating..." : "Adding...") : (isEditing ? "Update" : "Add")}
+          {loading ? (isEditing ? "Saving..." : "Adding...") : "Save"}
         </Button>
       </DialogActions>
     </Dialog>
