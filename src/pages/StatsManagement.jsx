@@ -230,7 +230,7 @@ function StatsManagement() {
 
             <TextField
               fullWidth
-              label="Locations"
+              label="Total Products"
               value={formData.locations}
               onChange={(e) => handleInputChanges("locations", e.target.value)}
               margin="normal"
@@ -246,7 +246,7 @@ function StatsManagement() {
                   disabled={loading}
                 />
               }
-              label="Show '+' symbol on front website for Locations"
+              label="Show '+' symbol on front website for Total Products"
             />
 
             <TextField
