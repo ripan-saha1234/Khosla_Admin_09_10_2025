@@ -9,6 +9,8 @@ function AbdonmentCart() {
   const [searchType, setSearchType] = useState("phone_no");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   const fetchOrders = async () => {
     try {
@@ -37,28 +39,36 @@ function AbdonmentCart() {
   }, []);
 
   useEffect(() => {
-    if (searchTerm === "") {
-      // Keep only initiated orders
-      const initiatedOrders = orders.filter(order => 
-        order.order_status && order.order_status.toLowerCase() === "order initiated"
-      );
-      setFilteredOrders(initiatedOrders);
-    } else {
-      const filtered = orders.filter(order => {
-        // First check if it's an initiated order
-        const isInitiated = order.order_status && order.order_status.toLowerCase() === "order initiated";
-        if (!isInitiated) return false;
-        
-        // Then apply search filter
-        if (searchType === "phone_no") {
-          return order.phone_no.toLowerCase().includes(searchTerm.toLowerCase());
-        } else {
-          return order.order_id.toLowerCase().includes(searchTerm.toLowerCase());
+    const filtered = orders.filter(order => {
+      const isInitiated = order.order_status && order.order_status.toLowerCase() === "order initiated";
+      if (!isInitiated) return false;
+
+      // Date range filter
+      if (startDate || endDate) {
+        const createdAt = new Date(order.created_at);
+        if (isNaN(createdAt.getTime())) return false;
+
+        const start = startDate ? new Date(startDate) : null;
+        const end = endDate ? new Date(endDate) : null;
+        if (start && createdAt < start) return false;
+
+        if (end) {
+          const endOfDay = new Date(end);
+          endOfDay.setHours(23, 59, 59, 999);
+          if (createdAt > endOfDay) return false;
         }
-      });
-      setFilteredOrders(filtered);
-    }
-  }, [searchTerm, searchType, orders]);
+      }
+
+      // Search filter
+      if (!searchTerm) return true;
+      if (searchType === "phone_no") {
+        return order.phone_no.toLowerCase().includes(searchTerm.toLowerCase());
+      } else {
+        return order.order_id.toLowerCase().includes(searchTerm.toLowerCase());
+      }
+    });
+    setFilteredOrders(filtered);
+  }, [searchTerm, searchType, orders, startDate, endDate]);
 
   function parseOrderAttributes(orders) {
     return orders.map(order => {
@@ -210,6 +220,21 @@ function AbdonmentCart() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="search-input"
+          />
+        </div>
+        <div className="date-filter-container" style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: "4px", border: "1px solid #ccc" }}
+          />
+          <span>to</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: "4px", border: "1px solid #ccc" }}
           />
         </div>
         {/* <div>

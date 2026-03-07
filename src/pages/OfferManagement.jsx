@@ -22,7 +22,9 @@ function OfferManagement() {
   const [buttonLoading, setButtonLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchMode, setIsSearchMode] = useState(false);
-  
+  const [productTypeFilter, setProductTypeFilter] = useState("all"); // "all" | "hotdeals"
+  const [allHotDealsProducts, setAllHotDealsProducts] = useState([]);
+
   const API_BASE_URL = "https://qixve8qntk.execute-api.ap-south-1.amazonaws.com/dev";
 
   // Helper function to map color string to hex color
@@ -165,6 +167,69 @@ function OfferManagement() {
     } catch (error) {
       console.error("Error fetching products:", error);
       alert('Failed to fetch products. Please try again.');
+    }
+    setLoading(false);
+  }
+
+  const transformProduct = (product) => ({
+    id: product.PID,
+    name: product.Name,
+    regularPrice: product.Regular_price,
+    salePrice: product.Sale_price,
+    type: product.Type,
+    model: product.Model,
+    shortDesc: product.Short_description,
+    description: product.Description,
+    inStock: product.In_stock,
+    categories: product.Categories ? product.Categories.split(',').map(cat => cat.trim()) : [],
+    brand: product.Brands,
+    isHotDeals: String(product?.is_hotdeals || product?.Is_hotdeals || "false") === "true",
+    images: product.Images ? product.Images.split(',').map(img => {
+      const trimmedImg = img.trim();
+      if (trimmedImg.startsWith('/uploads')) {
+        return `https://khoslaslider.s3.ap-south-1.amazonaws.com${trimmedImg}`;
+      }
+      return trimmedImg;
+    }) : []
+  });
+
+  // Fetch hot deals products from /products/hotdeals
+  async function fetchHotDealsProducts(pageNum = 1) {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/products/hotdeals`);
+      if (!res.ok) throw new Error(`Failed to fetch hot deals: ${res.status}`);
+      const data = await res.json();
+
+      let productsArray = [];
+      if (Array.isArray(data)) {
+        productsArray = data;
+      } else if (data.products && Array.isArray(data.products)) {
+        productsArray = data.products;
+      } else if (data.data && Array.isArray(data.data)) {
+        productsArray = data.data;
+      } else if (data.body) {
+        const bodyData = typeof data.body === "string" ? JSON.parse(data.body) : data.body;
+        if (Array.isArray(bodyData)) {
+          productsArray = bodyData;
+        } else if (bodyData.products) {
+          productsArray = bodyData.products;
+        }
+      }
+
+      const transformed = productsArray.map(transformProduct);
+      setAllHotDealsProducts(transformed);
+      setTotalProducts(transformed.length);
+      setTotalPages(Math.ceil(transformed.length / itemsPerPage));
+      setCurrentPage(1);
+      setProducts(transformed.slice(0, itemsPerPage));
+    } catch (error) {
+      console.error("Error fetching hot deals:", error);
+      alert("Failed to load hot deals. Please try again.");
+      setProducts([]);
+      setAllHotDealsProducts([]);
+      setTotalProducts(0);
+      setTotalPages(0);
     }
     setLoading(false);
   }
@@ -376,10 +441,30 @@ function OfferManagement() {
     }
   };
 
+  const handleProductTypeFilterChange = (e) => {
+    const value = e.target.value;
+    setProductTypeFilter(value);
+    setIsSearchMode(false);
+    setSearchTerm("");
+    setCurrentPage(1);
+    if (value === "all") {
+      setAllHotDealsProducts([]);
+      fetchProducts(1);
+    } else {
+      fetchHotDealsProducts(1);
+    }
+  };
+
   // Pagination handlers
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= totalPages) {
-      fetchProducts(newPage);
+      if (productTypeFilter === "hotdeals") {
+        const start = (newPage - 1) * itemsPerPage;
+        setProducts(allHotDealsProducts.slice(start, start + itemsPerPage));
+        setCurrentPage(newPage);
+      } else {
+        fetchProducts(newPage);
+      }
     }
   };
 
@@ -407,6 +492,25 @@ function OfferManagement() {
       <div className="products-page-product-container-header">
         <h1>OFFER MANAGEMENT ({totalProducts})</h1>
         <div className="products-page-product-search-add-container">
+          <select
+            value={productTypeFilter}
+            onChange={handleProductTypeFilterChange}
+            disabled={loading}
+            style={{
+              padding: "8px 15px",
+              fontSize: "14px",
+              border: "1px solid #000",
+              borderRadius: "6px",
+              backgroundColor: loading ? "#f5f5f5" : "white",
+              cursor: loading ? "not-allowed" : "pointer",
+              marginRight: "10px",
+              minWidth: "140px",
+              opacity: loading ? 0.6 : 1
+            }}
+          >
+            <option value="all">All products</option>
+            <option value="hotdeals">Hot deals</option>
+          </select>
           <div className="products-page-product-search">
             <input 
               type="text" 
@@ -419,7 +523,11 @@ function OfferManagement() {
                   setIsSearchMode(false);
                   setProducts([]);
                   setCurrentPage(1);
-                  fetchProducts();
+                  if (productTypeFilter === "hotdeals") {
+                    fetchHotDealsProducts(1);
+                  } else {
+                    fetchProducts(1);
+                  }
                 }
               }}
               onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
@@ -757,7 +865,9 @@ function OfferManagement() {
             <p>No products found. {
               isSearchMode 
                 ? 'Try a different search term.' 
-                : 'Please add products first.'
+                : productTypeFilter === "hotdeals"
+                  ? "No hot deals."
+                  : 'Please add products first.'
             }</p>
           </div>
         )}

@@ -46,16 +46,27 @@ function Products() {
   const [featuredUpdating, setFeaturedUpdating] = useState({});
   const [latestUpdating, setLatestUpdating] = useState({});
 
+  // Filter by Featured / Latest dropdown
+  const [productTypeFilter, setProductTypeFilter] = useState("all"); // "all" | "featured" | "latest"
+  const [allFilteredByTypeProducts, setAllFilteredByTypeProducts] = useState([]);
+
 
   async function fetchSearchResults(){
     setLoading(true);
     try {
-      // Search by model using API endpoint
-      const res = await fetch(`${API_BASE_URL}/products/${searchTerm}`);
+      // Khosla Search API: field=all, value=search term, optional threshold & limit
+      const params = new URLSearchParams({
+        field: 'all',
+        value: searchTerm.trim(),
+        threshold: '0.7',
+        limit: '20'
+      });
+      const searchUrl = `${FILTER_API_BASE_URL}/searchFunction?${params.toString()}`;
+      const res = await fetch(searchUrl);
       
       console.log('=== Search API Response ===');
-      console.log('Search term (model):', searchTerm);
-      console.log('Search URL:', `${API_BASE_URL}/products/${searchTerm}`);
+      console.log('Search term:', searchTerm);
+      console.log('Search URL:', searchUrl);
       
       if (!res.ok) {
         if (res.status === 404) {
@@ -67,7 +78,17 @@ function Products() {
         throw new Error("Failed to search product");
       }
       
-      const data = await res.json();
+      let data = await res.json();
+      // Handle Lambda/API Gateway response (body may be stringified JSON)
+      if (data && typeof data.body === 'string') {
+        try {
+          data = JSON.parse(data.body);
+        } catch (_) {
+          data = data.body;
+        }
+      } else if (data && data.body !== undefined && typeof data.body !== 'string') {
+        data = data.body;
+      }
       console.log('Search Response:', data);
       console.log('==========================');
       
@@ -80,8 +101,12 @@ function Products() {
         productsArray = [data.product];
       } else if (data.products) {
         productsArray = data.products;
-      } else {
-        // If single product object is returned directly
+      } else if (data.items && Array.isArray(data.items)) {
+        productsArray = data.items;
+      } else if (data.results && Array.isArray(data.results)) {
+        productsArray = data.results;
+      } else if (data && typeof data === 'object' && !Array.isArray(data)) {
+        // Single product object returned directly
         productsArray = [data];
       }
       
@@ -266,6 +291,54 @@ function Products() {
     setLoading(false);
   }
 
+  // Fetch featured or latest (hot deals) products from dedicated API endpoints
+  async function fetchProductsByFeaturedOrLatest(type) {
+    setLoading(true);
+    setProducts([]);
+    setAllFilteredByTypeProducts([]);
+    try {
+      const endpoint = type === "featured" ? `${API_BASE_URL}/products/featured` : `${API_BASE_URL}/products/latest`;
+      const res = await fetch(endpoint);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch ${type} products: ${res.status}`);
+      }
+      const data = await res.json();
+
+      let productsArray = [];
+      if (Array.isArray(data)) {
+        productsArray = data;
+      } else if (data.products && Array.isArray(data.products)) {
+        productsArray = data.products;
+      } else if (data.data && Array.isArray(data.data)) {
+        productsArray = data.data;
+      } else if (data.body) {
+        const bodyData = typeof data.body === "string" ? JSON.parse(data.body) : data.body;
+        if (Array.isArray(bodyData)) {
+          productsArray = bodyData;
+        } else if (bodyData.products) {
+          productsArray = bodyData.products;
+        }
+      }
+
+      const specificationsMap = await fetchSpecifications();
+      const transformed = productsArray.map((p) => transformProductData(p, specificationsMap));
+
+      setAllFilteredByTypeProducts(transformed);
+      setTotalProducts(transformed.length);
+      setTotalPages(Math.ceil(transformed.length / itemsPerPage));
+      setCurrentPage(1);
+      setProducts(transformed.slice(0, itemsPerPage));
+    } catch (error) {
+      console.error("Error fetching products by type:", error);
+      alert(`Failed to load ${type} products. Please try again.`);
+      setProducts([]);
+      setAllFilteredByTypeProducts([]);
+      setTotalProducts(0);
+      setTotalPages(0);
+    }
+    setLoading(false);
+  }
+
   async function fetchProducts(pageNum = currentPage){
     setLoading(true);
     try {
@@ -309,12 +382,28 @@ function Products() {
   // Pagination handlers
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= totalPages) {
-      if (selectedCategory === "all") {
+      if (productTypeFilter === "featured" || productTypeFilter === "latest") {
+        const start = (newPage - 1) * itemsPerPage;
+        setProducts(allFilteredByTypeProducts.slice(start, start + itemsPerPage));
+        setCurrentPage(newPage);
+      } else if (selectedCategory === "all") {
         fetchProducts(newPage);
       } else {
         fetchProductsByCategory(selectedCategory, newPage);
       }
     }
+  };
+
+  const handleProductTypeFilterChange = (e) => {
+    const value = e.target.value;
+    setProductTypeFilter(value);
+    setIsSearchMode(false);
+    setSearchTerm("");
+    setCurrentPage(1);
+    if (value === "all") {
+      setAllFilteredByTypeProducts([]);
+    }
+    // Actual refresh is done in useEffect when productTypeFilter changes
   };
 
   const handlePreviousPage = () => {
@@ -558,14 +647,16 @@ function Products() {
   const handleCategoryChange = (e) => {
     const categoryValue = e.target.value;
     setSelectedCategory(categoryValue);
-    
+    setProductTypeFilter("all");
+    setAllFilteredByTypeProducts([]);
+
     // Reset to first page when category changes
     setCurrentPage(1);
-    
+
     // Exit search mode when filtering by category
     setIsSearchMode(false);
     setSearchTerm("");
-    
+
     // Fetch products based on selected category
     if (categoryValue === "all") {
       fetchProducts(1);
@@ -574,11 +665,19 @@ function Products() {
     }
   };
 
+  // After every filter/category select, refresh products
   useEffect(() => {
-    if (!isSearchMode) {
-      fetchProducts();
+    if (isSearchMode) return;
+    if (productTypeFilter === "all") {
+      if (selectedCategory === "all") {
+        fetchProducts(1);
+      } else {
+        fetchProductsByCategory(selectedCategory, 1);
+      }
+    } else {
+      fetchProductsByFeaturedOrLatest(productTypeFilter);
     }
-  }, [isSearchMode]);
+  }, [isSearchMode, productTypeFilter, selectedCategory]);
 
   // Fetch categories on component mount
   useEffect(() => {
@@ -736,8 +835,9 @@ function Products() {
         alert("Product added successfully!");
         
         // Refresh the product list from API
-        // Maintain category filter when refreshing
-        if (selectedCategory === "all") {
+        if (productTypeFilter === "featured" || productTypeFilter === "latest") {
+          fetchProductsByFeaturedOrLatest(productTypeFilter);
+        } else if (selectedCategory === "all") {
           fetchProducts(currentPage);
         } else {
           fetchProductsByCategory(selectedCategory, currentPage);
@@ -784,8 +884,9 @@ function Products() {
       alert("Product deleted successfully!");
       
       // Refresh the product list from API
-      // Maintain category filter when refreshing
-      if (selectedCategory === "all") {
+      if (productTypeFilter === "featured" || productTypeFilter === "latest") {
+        fetchProductsByFeaturedOrLatest(productTypeFilter);
+      } else if (selectedCategory === "all") {
         fetchProducts(currentPage);
       } else {
         fetchProductsByCategory(selectedCategory, currentPage);
@@ -830,6 +931,26 @@ function Products() {
                 ))
               )}
             </select>
+            <select
+              value={productTypeFilter}
+              onChange={handleProductTypeFilterChange}
+              disabled={loading}
+              style={{
+                padding: "8px 15px",
+                fontSize: "14px",
+                border: "1px solid #000",
+                borderRadius: "6px",
+                backgroundColor: loading ? "#f5f5f5" : "white",
+                cursor: loading ? "not-allowed" : "pointer",
+                marginRight: "10px",
+                minWidth: "140px",
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              <option value="all">All products</option>
+              <option value="featured">Featured</option>
+              <option value="latest">Latest</option>
+            </select>
             <div className="products-page-product-search">
               <input 
                 type="text" 
@@ -842,7 +963,11 @@ function Products() {
                     setIsSearchMode(false);
                     setProducts([]);
                     setCurrentPage(1);
-                    fetchProducts();
+                    if (productTypeFilter === "featured" || productTypeFilter === "latest") {
+                      fetchProductsByFeaturedOrLatest(productTypeFilter);
+                    } else {
+                      fetchProducts();
+                    }
                   }
                 }}
                 onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
@@ -1029,9 +1154,13 @@ function Products() {
               <p>No products found. {
                 isSearchMode 
                   ? 'Try a different search term.' 
-                  : selectedCategory !== "all" 
-                    ? `No products found in category "${selectedCategory}".` 
-                    : 'Add your first product!'
+                  : productTypeFilter === "featured"
+                    ? "No featured products."
+                    : productTypeFilter === "latest"
+                      ? "No hot deals."
+                      : selectedCategory !== "all" 
+                        ? `No products found in category "${selectedCategory}".` 
+                        : 'Add your first product!'
               }</p>
             </div>
           )}
@@ -1109,7 +1238,9 @@ function Products() {
         product={editProduct}
         onSubmit={handleSubmitSingleProduct}
         onRefresh={() => {
-          if (selectedCategory === "all") {
+          if (productTypeFilter === "featured" || productTypeFilter === "latest") {
+            fetchProductsByFeaturedOrLatest(productTypeFilter);
+          } else if (selectedCategory === "all") {
             fetchProducts(currentPage);
           } else {
             fetchProductsByCategory(selectedCategory, currentPage);
@@ -1135,7 +1266,9 @@ function Products() {
         product={specificationProduct}
         onSuccess={() => {
           // Refresh products after specification update
-          if (selectedCategory === "all") {
+          if (productTypeFilter === "featured" || productTypeFilter === "latest") {
+            fetchProductsByFeaturedOrLatest(productTypeFilter);
+          } else if (selectedCategory === "all") {
             fetchProducts(currentPage);
           } else {
             fetchProductsByCategory(selectedCategory, currentPage);
