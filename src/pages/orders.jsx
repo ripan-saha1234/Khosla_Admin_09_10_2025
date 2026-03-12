@@ -91,16 +91,28 @@ function Orders() {
 
   const getStatusColor = (status) => {
     switch (status.toLowerCase()  ) {
-      case "order initiated" || "order unsuccessful":
+      case "order initiated":
+      case "orderunsuccessful":
+      case "order unsuccessful":
         return { backgroundColor: "red", color: "white" };
+      case "orderplaced":
       case "order placed":
         return { backgroundColor: "orange", color: "white" };
       case "accepted":
+      case "ordersuccessfullyplaced":
         return { backgroundColor: "green", color: "white" };
       case "rejected":
+      case "cancelled":
         return { backgroundColor: "black", color: "white" };
       case "shipped":
         return { backgroundColor: "blue", color: "white" };
+      case "outfordelivery":
+        return { backgroundColor: "#188bcf", color: "white" };
+      case "ordersuccessfullydelivered":
+        return { backgroundColor: "#0f9d58", color: "white" };
+      case "refund":
+      case "refundprocessing":
+        return { backgroundColor: "#fbc02d", color: "black" };
       default:
         return { backgroundColor: "gray", color: "white" };
     }
@@ -130,7 +142,7 @@ function Orders() {
       if (data.statusCode === 200 || data.statusCode === 201 || data.success === true || data.message === "Order status updated successfully") {
         // Update local state again to reflect the change
         const updatedOrders2 = orders.map(order =>
-          order.order_id === orderId ? { ...order, order_status: newStatus } : order
+            order.order_id === orderId ? { ...order, order_status: newStatus } : order
         );
         
         // Filter out "Order initiated" orders
@@ -477,13 +489,15 @@ function Orders() {
                     defaultValue=""
                   >
                     <option value="" disabled>Change Status</option>
-                    <option value="Order initiated">Order initiated</option>
-                    <option value="Order successfully placed">Order successfully placed</option>
-                    <option value="Order out for delivery">Order out for delivery</option>
-                    <option value="Order successfully delivered">Order successfully delivered</option>
-                    <option value="Refund processing">Refund processing</option>
-                    <option value="Refund successfully">Refund successfully</option>
-                    <option value="Order unsuccessful">Order unsuccessful</option>
+                    <option value="orderplaced">Order received, being reviewed</option>
+                    <option value="ordersuccessfullyplaced">Order confirmed and being prepared</option>
+                    <option value="orderunsuccessful">Order failed due to technical issue</option>
+                    <option value="shipped">Order has been shipped</option>
+                    <option value="outfordelivery">Order is out for delivery today</option>
+                    <option value="ordersuccessfullydelivered">Order delivered successfully</option>
+                    <option value="cancelled">Order has been cancelled</option>
+                    <option value="refund">Refund has been initiated</option>
+                    <option value="refundprocessing">Refund is actively being processed</option>
                     {/* <option value="Accepted">Accepted</option>
                     <option value="Rejected">Rejected</option>
                     <option value="Shipped">Shipped</option> */}

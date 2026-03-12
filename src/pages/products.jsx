@@ -161,6 +161,7 @@ function Products() {
     shortDesc: product.Short_description,
     description: product.Description,
     inStock: product.In_stock,
+    keyword: product.Keyword || "",
     categories: product.Categories ? product.Categories.split(',').map(cat => cat.trim()) : [],
     brand: product.Brands,
     // Use specification from specifications API if available, otherwise use product's Specification field
@@ -719,7 +720,7 @@ function Products() {
           Type: newProduct.type || "simple",
           Name: newProduct.name || "",
           GTIN: "",
-          Keyword: newProduct.categories?.join(", ") || "",
+          Keyword: newProduct.keyword || "",
           Published: "1",
           Is_featured: "0",
           Visibility_in_catalog: "visible",
@@ -788,7 +789,7 @@ function Products() {
           Type: newProduct.type || "simple",
           Name: newProduct.name || "",
           GTIN: "",
-          Keyword: newProduct.categories?.join(", ") || "",
+          Keyword: newProduct.keyword || "",
           Published: "1",
           Is_featured: "0",
           Visibility_in_catalog: "visible",
@@ -1327,6 +1328,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, A
   const [regularPrice, setRegularPrice] = useState(product ? product?.regularPrice : "");
   const [categories, setCategories] = useState(product && product?.categories ? product?.categories?.join(", ") : "");
   const [brand, setBrand] = useState(product ? product?.brand : "");
+  const [keyword, setKeyword] = useState(product ? product?.keyword : "");
   const [images, setImages] = useState(product && product?.images ? product?.images?.join(", ") : "");
   const [currentUrl, setCurrentUrl] = useState(product ? product?.images[0] : "");
 
@@ -1423,6 +1425,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, A
       setRegularPrice(product?.regularPrice || "");
       setCategories(product?.categories ? product?.categories?.join(", ") : "");
       setBrand(product?.brand || "");
+      setKeyword(product?.keyword || "");
       setImages(product?.images ? product?.images?.join(", ") : "");
     } else {
       // Reset for add mode
@@ -1437,6 +1440,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, A
       setRegularPrice("");
       setCategories("");
       setBrand("");
+      setKeyword("");
       setImages("");
     }
   }, [product]);
@@ -1537,6 +1541,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, A
       regularPrice,
       categories: categories?.split(",").map((cat) => cat?.trim()).filter(Boolean),
       brand,
+      keyword,
       images: showImageUpload && apiReturnedImageUrls.length > 0
         ? apiReturnedImageUrls  // Use S3 uploaded URLs from API
         : images?.split(",").map((img) => img?.trim()).filter(Boolean), // Use existing URL images
@@ -1638,6 +1643,13 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, A
           fullWidth
           value={brand}
           onChange={(e) => setBrand(e.target.value)}
+        />
+        <TextField
+          margin="normal"
+          label="Keyword"
+          fullWidth
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
         />
         
         {/* Commented out for image upload feature */}
