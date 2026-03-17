@@ -164,6 +164,7 @@ function Products() {
     keyword: product.Keyword || "",
     categories: product.Categories ? product.Categories.split(',').map(cat => cat.trim()) : [],
     brand: product.Brands,
+    tags: product.Tags ? product.Tags.split(',').map(tag => tag.trim()) : [],
     // Use specification from specifications API if available, otherwise use product's Specification field
     specification: specificationsMap[product.Model] || product.Specification || "",
     isFeatured: String(product?.is_featured || product?.Is_featured || "false") === "true",
@@ -741,7 +742,7 @@ function Products() {
           Sale_price: newProduct.salePrice || "0",
           Regular_price: newProduct.regularPrice || "0",
           Categories: newProduct.categories?.join(", ") || "",
-          Tags: "",
+          Tags: newProduct.tags?.join(", ") || "",
           Shipping_class: "standard",
           Images: newProduct.images?.join(", ") || "",
           Brands: newProduct.brand || "",
@@ -810,7 +811,7 @@ function Products() {
           Sale_price: newProduct.salePrice || "0",
           Regular_price: newProduct.regularPrice || "0",
           Categories: newProduct.categories?.join(", ") || "",
-          Tags: "",
+          Tags: newProduct.tags?.join(", ") || "",
           Shipping_class: "standard",
           Images: newProduct.images?.join(", ") || "",
           Brands: newProduct.brand || "",
@@ -1329,6 +1330,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, A
   const [categories, setCategories] = useState(product && product?.categories ? product?.categories?.join(", ") : "");
   const [brand, setBrand] = useState(product ? product?.brand : "");
   const [keyword, setKeyword] = useState(product ? product?.keyword : "");
+  const [tags, setTags] = useState(product && product?.tags ? product?.tags?.join(", ") : "");
   const [images, setImages] = useState(product && product?.images ? product?.images?.join(", ") : "");
   const [currentUrl, setCurrentUrl] = useState(product ? product?.images[0] : "");
 
@@ -1426,6 +1428,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, A
       setCategories(product?.categories ? product?.categories?.join(", ") : "");
       setBrand(product?.brand || "");
       setKeyword(product?.keyword || "");
+      setTags(product?.tags ? product?.tags?.join(", ") : "");
       setImages(product?.images ? product?.images?.join(", ") : "");
     } else {
       // Reset for add mode
@@ -1441,6 +1444,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, A
       setCategories("");
       setBrand("");
       setKeyword("");
+      setTags("");
       setImages("");
     }
   }, [product]);
@@ -1541,6 +1545,7 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, A
       regularPrice,
       categories: categories?.split(",").map((cat) => cat?.trim()).filter(Boolean),
       brand,
+      tags: tags?.split(",").map((tag) => tag?.trim()).filter(Boolean),
       keyword,
       images: showImageUpload && apiReturnedImageUrls.length > 0
         ? apiReturnedImageUrls  // Use S3 uploaded URLs from API
@@ -1650,6 +1655,13 @@ function AddSingleProductDialog({ open, onClose, product, onSubmit, onRefresh, A
           fullWidth
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
+        />
+        <TextField
+          margin="normal"
+          label="Tags (comma separated)"
+          fullWidth
+          value={tags}
+          onChange={(e) => setTags(e.target.value)}
         />
         
         {/* Commented out for image upload feature */}
